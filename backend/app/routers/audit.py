@@ -7,20 +7,15 @@ from backend.app.models import AuditLog, User, UserRole
 from backend.app.schemas import AuditLogResponse
 from backend.app.auth import get_current_user, check_project_access
 
-router = APIRouter(prefix="/audit", tags=["Audit Logs"])
+router = APIRouter(tags=["Audit Logs"])
 
-@router.get("/{project_id}", response_model=List[AuditLogResponse])
-def get_project_audit_logs(
-    project_id: str,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
-):
+def _fetch_audit_logs(project_id: str, db: Session, current_user: User) -> List[AuditLogResponse]:
     check_project_access(project_id, current_user, db)
     logs = (
         db.query(AuditLog)
         .filter(AuditLog.project_id == project_id)
         .order_by(AuditLog.created_at.desc())
-        .limit(100)
+        .limit(200)
         .all()
     )
 
@@ -40,3 +35,19 @@ def get_project_audit_logs(
             created_at=log.created_at
         ))
     return results
+
+@router.get("/audit/{project_id}", response_model=List[AuditLogResponse])
+def get_project_audit_logs_legacy(
+    project_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    return _fetch_audit_logs(project_id, db, current_user)
+
+@router.get("/projects/{project_id}/audit-logs", response_model=List[AuditLogResponse])
+def get_project_audit_logs(
+    project_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    return _fetch_audit_logs(project_id, db, current_user)

@@ -131,12 +131,19 @@ export interface EvidenceReference {
   id: string;
   finding_id: string;
   document_id: string;
+  document_filename?: string;
+  chunk_id?: string | null;
   page_number: number;
+  page_end?: number;
   quotation: string;
+  character_start?: number;
+  character_end?: number;
   match_score: number;
   is_verified: boolean;
+  verification_status?: VerificationStatus;
+  verification_method?: string;
   verified_at: string;
-  document_filename?: string;
+  verification_timestamp?: string;
 }
 
 export interface ExtractedFinding {
@@ -186,12 +193,29 @@ export interface ExtractionJob {
   completed_at?: string | null;
 }
 
+export type ConflictStatus = "OPEN" | "UNDER_REVIEW" | "RESOLVED" | "DISMISSED" | "IGNORED";
+export type ConflictSeverity = "CRITICAL" | "HIGH" | "MEDIUM" | "LOW" | "UNKNOWN";
+export type ResolutionChoice =
+  | "CLAIM_A_SUPPORTED"
+  | "CLAIM_B_SUPPORTED"
+  | "BOTH_VALID_DIFFERENT_CONTEXT"
+  | "NEITHER_SUPPORTED"
+  | "INVESTIGATION_REQUIRED";
+
 export interface KnowledgeConflict {
   id: string;
   project_id: string;
+  title?: string | null;
+  related_entity_type?: string | null;
+  related_entity_id?: string | null;
   finding_id_1?: string | null;
   finding_id_2?: string | null;
-  conflict_type: "STATUS" | "DEADLINE" | "OWNERSHIP" | "CONTRADICTION";
+  finding_a_id?: string | null;
+  finding_b_id?: string | null;
+  evidence_a_id?: string | null;
+  evidence_b_id?: string | null;
+  conflict_type: "STATUS" | "DEADLINE" | "OWNERSHIP" | "CONTRADICTION" | "DECISION" | "DEPENDENCY";
+  severity?: ConflictSeverity;
   description: string;
   source_1_quote?: string | null;
   source_1_page?: number | null;
@@ -201,8 +225,84 @@ export interface KnowledgeConflict {
   source_2_page?: number | null;
   source_2_doc_id?: string | null;
   source_2_doc_filename?: string | null;
-  status: "OPEN" | "RESOLVED" | "IGNORED";
+  source_a_quote?: string | null;
+  source_a_page?: number | null;
+  source_a_doc_id?: string | null;
+  source_a_doc_filename?: string | null;
+  source_b_quote?: string | null;
+  source_b_page?: number | null;
+  source_b_doc_id?: string | null;
+  source_b_doc_filename?: string | null;
+  conflict_status?: ConflictStatus;
+  status: ConflictStatus;
+  resolution_choice?: ResolutionChoice | null;
+  resolution_notes?: string | null;
+  resolved_by?: string | null;
+  resolver_name?: string | null;
+  detected_at?: string | null;
+  resolved_at?: string | null;
   created_at: string;
+  updated_at?: string | null;
+}
+
+export interface ConflictDetail extends KnowledgeConflict {
+  finding_a?: any;
+  finding_b?: any;
+  evidence_a?: any;
+  evidence_b?: any;
+}
+
+export interface ConflictHistoryItem {
+  id: string;
+  conflict_id: string;
+  action: string;
+  user_id?: string | null;
+  user_name?: string | null;
+  details: Record<string, any>;
+  created_at: string;
+}
+
+export interface EvidenceSummary {
+  total_findings: number;
+  total_evidence_references: number;
+  verified_count: number;
+  unsupported_count: number;
+  needs_review_count: number;
+  conflicted_count: number;
+  broken_citations_count: number;
+  coverage_percentage: number;
+  coverage_fraction: string;
+  by_document: Array<{
+    document_id: string;
+    filename: string;
+    total_findings: number;
+    verified_findings: number;
+    coverage_pct: number;
+  }>;
+  by_entity_type: Record<string, number>;
+}
+
+export interface EvidenceDetailItem {
+  id: string;
+  finding_id: string;
+  finding_title: string;
+  entity_type: EntityType;
+  document_id: string;
+  document_filename?: string | null;
+  chunk_id?: string | null;
+  chunk_text?: string | null;
+  page_number: number;
+  page_end?: number;
+  quotation: string;
+  character_start: number;
+  character_end: number;
+  match_score: number;
+  is_verified: boolean;
+  verification_status: VerificationStatus;
+  verification_method: string;
+  verified_at?: string | null;
+  integrity_checks: Record<string, boolean>;
+  surrounding_context?: string | null;
 }
 
 export interface FindingEvidenceDetail {

@@ -9,6 +9,11 @@ import {
   ExtractedFinding,
   ExtractionJob,
   KnowledgeConflict,
+  ConflictDetail,
+  ConflictHistoryItem,
+  EvidenceReference,
+  EvidenceSummary,
+  EvidenceDetailItem,
   FindingEvidenceDetail,
   ProjectKnowledgeSummary,
   ProjectStateResponse,
@@ -386,8 +391,75 @@ export const api = {
     return request<ExtractedFinding[]>(`/projects/${projectId}/questions`);
   },
 
-  async getConflicts(projectId: string): Promise<KnowledgeConflict[]> {
-    return request<KnowledgeConflict[]>(`/projects/${projectId}/conflicts`);
+  async getConflicts(
+    projectId: string,
+    filters?: { conflict_status?: string; severity?: string; conflict_type?: string }
+  ): Promise<KnowledgeConflict[]> {
+    const params = new URLSearchParams();
+    if (filters?.conflict_status) params.append("conflict_status", filters.conflict_status);
+    if (filters?.severity) params.append("severity", filters.severity);
+    if (filters?.conflict_type) params.append("conflict_type", filters.conflict_type);
+    const q = params.toString() ? `?${params.toString()}` : "";
+    return request<KnowledgeConflict[]>(`/projects/${projectId}/conflicts${q}`);
+  },
+
+  async getConflictDetail(conflictId: string): Promise<ConflictDetail> {
+    return request<ConflictDetail>(`/conflicts/${conflictId}`);
+  },
+
+  async reviewConflict(conflictId: string, notes?: string): Promise<KnowledgeConflict> {
+    return request<KnowledgeConflict>(`/conflicts/${conflictId}/review`, {
+      method: "POST",
+      body: JSON.stringify({ notes }),
+    });
+  },
+
+  async resolveConflict(
+    conflictId: string,
+    resolution_choice: string,
+    resolution_notes: string
+  ): Promise<KnowledgeConflict> {
+    return request<KnowledgeConflict>(`/conflicts/${conflictId}/resolve`, {
+      method: "POST",
+      body: JSON.stringify({ resolution_choice, resolution_notes }),
+    });
+  },
+
+  async dismissConflict(conflictId: string, resolution_notes: string): Promise<KnowledgeConflict> {
+    return request<KnowledgeConflict>(`/conflicts/${conflictId}/dismiss`, {
+      method: "POST",
+      body: JSON.stringify({ resolution_notes }),
+    });
+  },
+
+  async getConflictHistory(conflictId: string): Promise<{ conflict_id: string; history: ConflictHistoryItem[] }> {
+    return request<{ conflict_id: string; history: ConflictHistoryItem[] }>(`/conflicts/${conflictId}/history`);
+  },
+
+  // Phase 6 Evidence Verification & Quality Endpoints
+  async getEvidenceSummary(projectId: string): Promise<EvidenceSummary> {
+    return request<EvidenceSummary>(`/projects/${projectId}/evidence/summary`);
+  },
+
+  async listProjectEvidence(
+    projectId: string,
+    filters?: { verification_status?: string; document_id?: string; limit?: number; offset?: number }
+  ): Promise<EvidenceReference[]> {
+    const params = new URLSearchParams();
+    if (filters?.verification_status) params.append("verification_status", filters.verification_status);
+    if (filters?.document_id) params.append("document_id", filters.document_id);
+    if (filters?.limit) params.append("limit", filters.limit.toString());
+    if (filters?.offset) params.append("offset", filters.offset.toString());
+    const q = params.toString() ? `?${params.toString()}` : "";
+    return request<EvidenceReference[]>(`/projects/${projectId}/evidence${q}`);
+  },
+
+  async getEvidenceDetail(evidenceId: string): Promise<EvidenceDetailItem> {
+    return request<EvidenceDetailItem>(`/evidence/${evidenceId}`);
+  },
+
+  async verifyEvidence(evidenceId: string): Promise<any> {
+    return request<any>(`/evidence/${evidenceId}/verify`, { method: "POST" });
   },
 
   async getFindingEvidence(findingId: string): Promise<FindingEvidenceDetail> {

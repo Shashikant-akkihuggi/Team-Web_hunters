@@ -214,12 +214,19 @@ class EvidenceReferenceResponse(BaseModel):
     id: str
     finding_id: str
     document_id: str
-    page_number: int
-    quotation: str
-    match_score: float
-    is_verified: bool
-    verified_at: datetime
     document_filename: Optional[str] = None
+    chunk_id: Optional[str] = None
+    page_number: int
+    page_end: Optional[int] = 1
+    quotation: str
+    character_start: int = 0
+    character_end: int = 0
+    match_score: float = 1.0
+    is_verified: bool = True
+    verification_status: str = "VERIFIED"
+    verification_method: str = "EXACT_SUBSTRING"
+    verified_at: Optional[datetime] = None
+    verification_timestamp: Optional[datetime] = None
 
     class Config:
         from_attributes = True
@@ -329,9 +336,17 @@ class ExtractionJobResponse(BaseModel):
 class KnowledgeConflictResponse(BaseModel):
     id: str
     project_id: str
+    title: Optional[str] = None
+    related_entity_type: Optional[str] = None
+    related_entity_id: Optional[str] = None
     finding_id_1: Optional[str] = None
     finding_id_2: Optional[str] = None
+    finding_a_id: Optional[str] = None
+    finding_b_id: Optional[str] = None
+    evidence_a_id: Optional[str] = None
+    evidence_b_id: Optional[str] = None
     conflict_type: str
+    severity: str = "MEDIUM"
     description: str
     source_1_quote: Optional[str] = None
     source_1_page: Optional[int] = None
@@ -341,11 +356,102 @@ class KnowledgeConflictResponse(BaseModel):
     source_2_page: Optional[int] = None
     source_2_doc_id: Optional[str] = None
     source_2_doc_filename: Optional[str] = None
-    status: str
+    source_a_quote: Optional[str] = None
+    source_a_page: Optional[int] = None
+    source_a_doc_id: Optional[str] = None
+    source_a_doc_filename: Optional[str] = None
+    source_b_quote: Optional[str] = None
+    source_b_page: Optional[int] = None
+    source_b_doc_id: Optional[str] = None
+    source_b_doc_filename: Optional[str] = None
+    conflict_status: str = "OPEN"
+    status: str = "OPEN"
+    resolution_choice: Optional[str] = None
+    resolution_notes: Optional[str] = None
+    resolved_by: Optional[str] = None
+    resolver_name: Optional[str] = None
+    detected_at: Optional[datetime] = None
+    resolved_at: Optional[datetime] = None
     created_at: datetime
+    updated_at: Optional[datetime] = None
 
     class Config:
         from_attributes = True
+
+class ConflictDetailResponse(KnowledgeConflictResponse):
+    finding_a: Optional[Dict[str, Any]] = None
+    finding_b: Optional[Dict[str, Any]] = None
+    evidence_a: Optional[Dict[str, Any]] = None
+    evidence_b: Optional[Dict[str, Any]] = None
+
+class ConflictReviewRequest(BaseModel):
+    notes: Optional[str] = None
+
+class ConflictResolveRequest(BaseModel):
+    resolution_choice: str = Field(..., description="CLAIM_A_SUPPORTED, CLAIM_B_SUPPORTED, BOTH_VALID_DIFFERENT_CONTEXT, NEITHER_SUPPORTED, INVESTIGATION_REQUIRED")
+    resolution_notes: str = Field(..., min_length=5, description="Mandatory detailed explanation for why this resolution was chosen")
+
+class ConflictDismissRequest(BaseModel):
+    resolution_notes: str = Field(..., min_length=5, description="Mandatory explanation for dismissing the conflict")
+
+class ConflictHistoryItem(BaseModel):
+    id: str
+    conflict_id: str
+    action: str
+    user_id: Optional[str] = None
+    user_name: Optional[str] = None
+    details: Dict[str, Any] = {}
+    created_at: datetime
+
+class ConflictHistoryResponse(BaseModel):
+    conflict_id: str
+    history: List[ConflictHistoryItem] = []
+
+class EvidenceDetailItemResponse(BaseModel):
+    id: str
+    finding_id: str
+    finding_title: str
+    entity_type: str
+    document_id: str
+    document_filename: Optional[str] = None
+    chunk_id: Optional[str] = None
+    chunk_text: Optional[str] = None
+    page_number: int
+    page_end: Optional[int] = 1
+    quotation: str
+    character_start: int = 0
+    character_end: int = 0
+    match_score: float = 1.0
+    is_verified: bool = True
+    verification_status: str = "VERIFIED"
+    verification_method: str = "EXACT_SUBSTRING"
+    verified_at: Optional[datetime] = None
+    integrity_checks: Dict[str, bool] = {}
+    surrounding_context: Optional[str] = None
+
+class EvidenceSummaryResponse(BaseModel):
+    total_findings: int
+    total_evidence_references: int
+    verified_count: int
+    unsupported_count: int
+    needs_review_count: int
+    conflicted_count: int
+    broken_citations_count: int
+    coverage_percentage: float
+    coverage_fraction: str
+    by_document: List[Dict[str, Any]] = []
+    by_entity_type: Dict[str, int] = {}
+
+class EvidenceVerifyResponse(BaseModel):
+    evidence_id: str
+    finding_id: str
+    is_verified: bool
+    verification_status: str
+    verification_method: str
+    match_score: float
+    verified_page: int
+    integrity_checks: Dict[str, bool]
+    error_message: Optional[str] = None
 
 class FindingEvidenceDetailResponse(BaseModel):
     finding_id: str

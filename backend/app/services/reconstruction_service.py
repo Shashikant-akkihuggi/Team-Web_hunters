@@ -7,7 +7,7 @@ from sqlalchemy import or_
 from backend.app.models import (
     Project, ProjectMember, Document, DocumentChunk, ExtractedFinding,
     EvidenceReference, KnowledgeConflict, ProjectReconstruction,
-    VerificationStatus, User
+    VerificationStatus, ConflictStatus, ResolutionChoice, User
 )
 from backend.app.schemas import (
     ProjectStateResponse, ProjectOverviewState, ProjectOwnershipState,
@@ -23,6 +23,39 @@ from backend.app.services.knowledge_normalization_service import (
 )
 
 logger = logging.getLogger(__name__)
+
+def get_superseded_finding_ids(project_id: str, db: Session) -> Dict[str, Dict[str, Any]]:
+    """
+    Returns mapping of finding_id -> resolution metadata for findings that have been
+    superseded by an approved conflict resolution (e.g. CLAIM_A_SUPPORTED supersedes finding B).
+    """
+    conflicts = db.query(KnowledgeConflict).filter(
+        KnowledgeConflict.project_id == project_id,
+        (KnowledgeConflict.conflict_status == ConflictStatus.RESOLVED) | (KnowledgeConflict.status == ConflictStatus.RESOLVED)
+    ).all()
+
+    superseded: Dict[str, Dict[str, Any]] = {}
+    for c in conflicts:
+        f_a_id = c.finding_a_id or c.finding_id_1
+        f_b_id = c.finding_b_id or c.finding_id_2
+        if c.resolution_choice == ResolutionChoice.CLAIM_A_SUPPORTED and f_b_id:
+            superseded[f_b_id] = {
+                "canonical_id": f_a_id,
+                "resolution": c.resolution_choice,
+                "notes": c.resolution_notes
+            }
+        elif c.resolution_choice == ResolutionChoice.CLAIM_B_SUPPORTED and f_a_id:
+            superseded[f_a_id] = {
+                "canonical_id": f_b_id,
+                "resolution": c.resolution_choice,
+                "notes": c.resolution_notes
+            }
+        elif c.resolution_choice == ResolutionChoice.NEITHER_SUPPORTED:
+            if f_a_id:
+                superseded[f_a_id] = {"canonical_id": None, "resolution": c.resolution_choice, "notes": c.resolution_notes}
+            if f_b_id:
+                superseded[f_b_id] = {"canonical_id": None, "resolution": c.resolution_choice, "notes": c.resolution_notes}
+    return superseded
 
 def reconstruct_project_state(
     project_id: str,
@@ -44,8 +77,10 @@ def reconstruct_project_state(
     members = db.query(ProjectMember).filter(ProjectMember.project_id == project_id).all()
     docs = db.query(Document).filter(Document.project_id == project_id).all()
 
-    # 1. Task State Breakdown
-    tasks = [f for f in findings if f.entity_type == "TASK"]
+    superseded = get_superseded_finding_ids(project_id, db)
+
+    # 1. Task State Breakdown (excluding superseded contradictory claims)
+    tasks = [f for f in findings if f.entity_type == "TASK" and f.id not in superseded]
     completed_tasks = 0
     in_progress_tasks = 0
     blocked_tasks = 0
@@ -87,17 +122,18 @@ def reconstruct_project_state(
     known_status_tasks = completed_tasks + in_progress_tasks + blocked_tasks + not_started_tasks
     completion_rate = round((completed_tasks / known_status_tasks * 100), 1) if known_status_tasks > 0 else 0.0
 
-    # 2. Decisions, Risks, Questions, Dependencies
-    decisions = [f for f in findings if f.entity_type == "DECISION"]
-    risks = [f for f in findings if f.entity_type == "RISK"]
-    blockers = [f for f in findings if f.entity_type == "BLOCKER"]
-    questions = [f for f in findings if f.entity_type == "QUESTION"]
-    dependencies = [f for f in findings if f.entity_type == "DEPENDENCY"]
+    # 2. Decisions, Risks, Questions, Dependencies (excluding superseded)
+    decisions = [f for f in findings if f.entity_type == "DECISION" and f.id not in superseded]
+    risks = [f for f in findings if f.entity_type == "RISK" and f.id not in superseded]
+    blockers = [f for f in findings if f.entity_type == "BLOCKER" and f.id not in superseded]
+    questions = [f for f in findings if f.entity_type == "QUESTION" and f.id not in superseded]
+    dependencies = [f for f in findings if f.entity_type == "DEPENDENCY" and f.id not in superseded]
 
-    # 3. Uncertainty & Anomaly Calculation
-    unsupported_count = sum(1 for f in findings if f.verification_status == VerificationStatus.UNSUPPORTED)
-    ownership_conflicts_count = sum(1 for c in conflicts if c.conflict_type == "OWNERSHIP")
-    conflicting_statuses_count = sum(1 for c in conflicts if c.conflict_type == "STATUS")
+    # 3. Uncertainty & Anomaly Calculation (only active open or under review conflicts)
+    open_conflicts = [c for c in conflicts if (c.conflict_status or c.status) in [ConflictStatus.OPEN, ConflictStatus.UNDER_REVIEW]]
+    unsupported_count = sum(1 for f in findings if f.verification_status == VerificationStatus.UNSUPPORTED and f.id not in superseded)
+    ownership_conflicts_count = sum(1 for c in open_conflicts if c.conflict_type == "OWNERSHIP")
+    conflicting_statuses_count = sum(1 for c in open_conflicts if c.conflict_type == "STATUS")
 
     overview = ProjectOverviewState(
         total_tasks=total_tasks_count,
@@ -280,6 +316,8 @@ def get_task_timeline(
         query = query.filter(ExtractedFinding.owner.ilike(f"%{owner_filter}%"))
     
     tasks = query.all()
+    superseded = get_superseded_finding_ids(project_id, db)
+    tasks = [t for t in tasks if t.id not in superseded]
 
     # Pre-fetch dependencies
     deps = db.query(ExtractedFinding).filter(
@@ -496,6 +534,8 @@ def get_responsibilities(
         ExtractedFinding.project_id == project_id,
         ExtractedFinding.entity_type == "TASK"
     ).all()
+    superseded = get_superseded_finding_ids(project_id, db)
+    tasks = [t for t in tasks if t.id not in superseded]
 
     members = db.query(ProjectMember).filter(ProjectMember.project_id == project_id).all()
     member_by_name: Dict[str, ProjectMember] = {}
@@ -571,6 +611,8 @@ def get_risk_register(
         ExtractedFinding.project_id == project_id,
         ExtractedFinding.entity_type.in_(["RISK", "BLOCKER"])
     ).all()
+    superseded = get_superseded_finding_ids(project_id, db)
+    findings = [f for f in findings if f.id not in superseded]
 
     source_risks: List[RiskRegisterItem] = []
     blockers: List[RiskRegisterItem] = []

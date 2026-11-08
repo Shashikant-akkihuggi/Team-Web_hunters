@@ -62,11 +62,35 @@ class ConflictType:
     DEADLINE = "DEADLINE"
     OWNERSHIP = "OWNERSHIP"
     CONTRADICTION = "CONTRADICTION"
+    DECISION = "DECISION"
+    DEPENDENCY = "DEPENDENCY"
 
 class ConflictStatus:
     OPEN = "OPEN"
+    UNDER_REVIEW = "UNDER_REVIEW"
     RESOLVED = "RESOLVED"
-    IGNORED = "IGNORED"
+    DISMISSED = "DISMISSED"
+    IGNORED = "DISMISSED"
+
+class ResolutionChoice:
+    CLAIM_A_SUPPORTED = "CLAIM_A_SUPPORTED"
+    CLAIM_B_SUPPORTED = "CLAIM_B_SUPPORTED"
+    BOTH_VALID_DIFFERENT_CONTEXT = "BOTH_VALID_DIFFERENT_CONTEXT"
+    NEITHER_SUPPORTED = "NEITHER_SUPPORTED"
+    INVESTIGATION_REQUIRED = "INVESTIGATION_REQUIRED"
+
+class ConflictSeverity:
+    CRITICAL = "CRITICAL"
+    HIGH = "HIGH"
+    MEDIUM = "MEDIUM"
+    LOW = "LOW"
+    UNKNOWN = "UNKNOWN"
+
+class VerificationMethod:
+    EXACT_SUBSTRING = "EXACT_SUBSTRING"
+    FUZZY_ALIGNMENT = "FUZZY_ALIGNMENT"
+    TOKEN_OVERLAP = "TOKEN_OVERLAP"
+    MANUAL = "MANUAL"
 
 class ProjectStatus:
     PLANNING = "PLANNING"
@@ -263,14 +287,24 @@ class EvidenceReference(Base):
     id = Column(String(36), primary_key=True, default=generate_uuid)
     finding_id = Column(String(36), ForeignKey("extracted_findings.id"), nullable=False, index=True)
     document_id = Column(String(36), ForeignKey("documents.id"), nullable=False, index=True)
+    document_filename = Column(String(255), nullable=True)
+    chunk_id = Column(String(36), ForeignKey("document_chunks.id", ondelete="SET NULL"), nullable=True, index=True)
     page_number = Column(Integer, nullable=False, default=1)
+    page_end = Column(Integer, nullable=True, default=1)
     quotation = Column(Text, nullable=False)
+    character_start = Column(Integer, default=0)
+    character_end = Column(Integer, default=0)
     match_score = Column(Float, default=1.0)
     is_verified = Column(Boolean, default=True)
+    verification_status = Column(String(50), default=VerificationStatus.VERIFIED, index=True)  # VERIFIED, UNSUPPORTED, NEEDS_REVIEW, CONFLICTED
+    verification_method = Column(String(50), default="EXACT_SUBSTRING")  # EXACT_SUBSTRING, FUZZY_ALIGNMENT, TOKEN_OVERLAP, MANUAL
     verified_at = Column(DateTime, default=datetime.utcnow)
+    verification_timestamp = Column(DateTime, default=datetime.utcnow)
 
     # Relationships
     finding = relationship("ExtractedFinding", back_populates="evidence_refs")
+    document = relationship("Document")
+    chunk = relationship("DocumentChunk")
 
 class Review(Base):
     __tablename__ = "reviews"
@@ -350,9 +384,17 @@ class KnowledgeConflict(Base):
 
     id = Column(String(36), primary_key=True, default=generate_uuid)
     project_id = Column(String(36), ForeignKey("projects.id"), nullable=False, index=True)
+    title = Column(String(255), nullable=True)
+    related_entity_type = Column(String(50), nullable=True)  # TASK, DECISION, etc.
+    related_entity_id = Column(String(255), nullable=True)
     finding_id_1 = Column(String(36), ForeignKey("extracted_findings.id", ondelete="CASCADE"), nullable=True, index=True)
     finding_id_2 = Column(String(36), ForeignKey("extracted_findings.id", ondelete="CASCADE"), nullable=True, index=True)
+    finding_a_id = Column(String(36), ForeignKey("extracted_findings.id", ondelete="CASCADE"), nullable=True, index=True)
+    finding_b_id = Column(String(36), ForeignKey("extracted_findings.id", ondelete="CASCADE"), nullable=True, index=True)
+    evidence_a_id = Column(String(36), ForeignKey("evidence_references.id", ondelete="SET NULL"), nullable=True, index=True)
+    evidence_b_id = Column(String(36), ForeignKey("evidence_references.id", ondelete="SET NULL"), nullable=True, index=True)
     conflict_type = Column(String(50), default=ConflictType.STATUS, index=True)
+    severity = Column(String(50), default=ConflictSeverity.MEDIUM, index=True)  # CRITICAL, HIGH, MEDIUM, LOW, UNKNOWN
     description = Column(Text, nullable=False)
     source_1_quote = Column(Text, nullable=True)
     source_1_page = Column(Integer, nullable=True)
@@ -360,13 +402,25 @@ class KnowledgeConflict(Base):
     source_2_quote = Column(Text, nullable=True)
     source_2_page = Column(Integer, nullable=True)
     source_2_doc_id = Column(String(36), nullable=True)
-    status = Column(String(50), default=ConflictStatus.OPEN, index=True)
+    conflict_status = Column(String(50), default=ConflictStatus.OPEN, index=True)  # OPEN, UNDER_REVIEW, RESOLVED, DISMISSED
+    status = Column(String(50), default=ConflictStatus.OPEN, index=True)  # Legacy compatibility
+    resolution_choice = Column(String(50), nullable=True)  # CLAIM_A_SUPPORTED, CLAIM_B_SUPPORTED, BOTH_VALID_DIFFERENT_CONTEXT, NEITHER_SUPPORTED, INVESTIGATION_REQUIRED
+    resolution_notes = Column(Text, nullable=True)
+    resolved_by = Column(String(36), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    detected_at = Column(DateTime, default=datetime.utcnow)
+    resolved_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     # Relationships
     project = relationship("Project", back_populates="conflicts")
     finding_1 = relationship("ExtractedFinding", foreign_keys=[finding_id_1])
     finding_2 = relationship("ExtractedFinding", foreign_keys=[finding_id_2])
+    finding_a = relationship("ExtractedFinding", foreign_keys=[finding_a_id])
+    finding_b = relationship("ExtractedFinding", foreign_keys=[finding_b_id])
+    evidence_a = relationship("EvidenceReference", foreign_keys=[evidence_a_id])
+    evidence_b = relationship("EvidenceReference", foreign_keys=[evidence_b_id])
+    resolver = relationship("User", foreign_keys=[resolved_by])
 
 class ProjectReconstruction(Base):
     __tablename__ = "project_reconstructions"

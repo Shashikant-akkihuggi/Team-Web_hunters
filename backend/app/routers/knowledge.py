@@ -72,27 +72,7 @@ def _format_finding_response(f: ExtractedFinding, db: Session) -> FindingRespons
         updated_at=f.updated_at
     )
 
-def _format_conflict_response(c: KnowledgeConflict, db: Session) -> KnowledgeConflictResponse:
-    doc1 = db.query(Document).filter(Document.id == c.source_1_doc_id).first() if c.source_1_doc_id else None
-    doc2 = db.query(Document).filter(Document.id == c.source_2_doc_id).first() if c.source_2_doc_id else None
-    return KnowledgeConflictResponse(
-        id=c.id,
-        project_id=c.project_id,
-        finding_id_1=c.finding_id_1,
-        finding_id_2=c.finding_id_2,
-        conflict_type=c.conflict_type,
-        description=c.description,
-        source_1_quote=c.source_1_quote,
-        source_1_page=c.source_1_page,
-        source_1_doc_id=c.source_1_doc_id,
-        source_1_doc_filename=doc1.filename if doc1 else None,
-        source_2_quote=c.source_2_quote,
-        source_2_page=c.source_2_page,
-        source_2_doc_id=c.source_2_doc_id,
-        source_2_doc_filename=doc2.filename if doc2 else None,
-        status=c.status,
-        created_at=c.created_at
-    )
+from backend.app.routers.conflicts import _format_conflict_response, get_project_conflicts
 
 # --- Phase 4 Knowledge Hub Endpoints ---
 
@@ -247,20 +227,7 @@ def get_project_questions(
     ).order_by(ExtractedFinding.created_at.desc()).all()
     return [_format_finding_response(f, db) for f in findings]
 
-@router.get("/projects/{project_id}/conflicts", response_model=List[KnowledgeConflictResponse])
-def get_project_conflicts(
-    project_id: str,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
-):
-    """
-    Returns all contradictory findings and conflicting claims detected across project documents.
-    """
-    check_project_access(project_id, current_user, db)
-    conflicts = db.query(KnowledgeConflict).filter(
-        KnowledgeConflict.project_id == project_id
-    ).order_by(KnowledgeConflict.created_at.desc()).all()
-    return [_format_conflict_response(c, db) for c in conflicts]
+
 
 @router.get("/knowledge/{finding_id}/evidence", response_model=FindingEvidenceDetailResponse)
 def get_finding_evidence_detail(

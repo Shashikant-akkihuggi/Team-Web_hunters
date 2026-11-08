@@ -34,6 +34,10 @@ import {
   ChevronRight,
   ExternalLink,
   Info,
+  Scale,
+  History,
+  FileCheck,
+  Check,
 } from "lucide-react";
 import {
   ExtractedFinding,
@@ -41,6 +45,11 @@ import {
   VerificationStatus,
   ExtractionJob,
   KnowledgeConflict,
+  EvidenceSummary,
+  ConflictStatus,
+  ConflictSeverity,
+  ResolutionChoice,
+  ConflictHistoryItem,
   ProjectStateResponse,
   DecisionTimelineResponse,
   DecisionTimelineEvent,
@@ -59,9 +68,9 @@ import { ReviewModal } from "@/components/ReviewModal";
 export function KnowledgeView() {
   const { currentProject, user } = useAuth();
 
-  // Phase 5 Tab navigation
+  // Tab navigation
   const [activeTab, setActiveTab] = useState<
-    "STATE_OVERVIEW" | "DECISIONS" | "TASKS" | "DEPENDENCIES" | "RESPONSIBILITIES" | "RISKS" | "CONFLICTS"
+    "STATE_OVERVIEW" | "DECISIONS" | "TASKS" | "DEPENDENCIES" | "RESPONSIBILITIES" | "RISKS" | "CONFLICTS" | "EVIDENCE_QUALITY"
   >("STATE_OVERVIEW");
 
   // Reconstructed State & Knowledge Data
@@ -72,6 +81,7 @@ export function KnowledgeView() {
   const [responsibilities, setResponsibilities] = useState<ResponsibilitiesResponse | null>(null);
   const [riskRegister, setRiskRegister] = useState<RiskRegisterResponse | null>(null);
   const [conflicts, setConflicts] = useState<KnowledgeConflict[]>([]);
+  const [evidenceSummary, setEvidenceSummary] = useState<EvidenceSummary | null>(null);
   const [latestJob, setLatestJob] = useState<ExtractionJob | null>(null);
 
   // Search & Filter state
@@ -79,7 +89,20 @@ export function KnowledgeView() {
   const [searchResults, setSearchResults] = useState<KnowledgeSearchResponse | null>(null);
   const [isSearching, setIsSearching] = useState(false);
   const [taskStatusFilter, setTaskStatusFilter] = useState("ALL");
+  const [conflictStatusFilter, setConflictStatusFilter] = useState("ALL");
+  const [conflictSeverityFilter, setConflictSeverityFilter] = useState("ALL");
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+
+  // Conflict Resolution & Audit States
+  const [resolvingConflict, setResolvingConflict] = useState<KnowledgeConflict | null>(null);
+  const [resolutionChoice, setResolutionChoice] = useState<ResolutionChoice>("CLAIM_A_SUPPORTED");
+  const [resolutionNotes, setResolutionNotes] = useState("");
+  const [dismissingConflict, setDismissingConflict] = useState<KnowledgeConflict | null>(null);
+  const [dismissalNotes, setDismissalNotes] = useState("");
+  const [viewingHistoryConflict, setViewingHistoryConflict] = useState<KnowledgeConflict | null>(null);
+  const [conflictHistory, setConflictHistory] = useState<ConflictHistoryItem[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [actionLoading, setActionLoading] = useState(false);
 
   // Loading & Action states
   const [loading, setLoading] = useState(true);
@@ -126,7 +149,15 @@ export function KnowledgeView() {
       const confs = await api.getConflicts(currentProject.id);
       setConflicts(confs);
 
-      // 8. Fetch latest extraction job
+      // 8. Fetch Evidence Summary
+      try {
+        const evSum = await api.getEvidenceSummary(currentProject.id);
+        setEvidenceSummary(evSum);
+      } catch (err) {
+        console.warn("Could not load evidence summary:", err);
+      }
+
+      // 9. Fetch latest extraction job
       const jobs = await api.listExtractions(currentProject.id);
       if (jobs && jobs.length > 0) {
         setLatestJob(jobs[0]);
@@ -178,6 +209,63 @@ export function KnowledgeView() {
       await handleReconstruct();
     } finally {
       setIsReverifying(false);
+    }
+  }
+
+  async function handleStartReview(conflictId: string) {
+    if (!currentProject) return;
+    setActionLoading(true);
+    try {
+      await api.reviewConflict(conflictId);
+      await loadAllReconstructedData();
+    } catch (e) {
+      console.error("Failed to start review:", e);
+    } finally {
+      setActionLoading(false);
+    }
+  }
+
+  async function handleApplyResolution() {
+    if (!resolvingConflict || !resolutionNotes.trim()) return;
+    setActionLoading(true);
+    try {
+      await api.resolveConflict(resolvingConflict.id, resolutionChoice, resolutionNotes.trim());
+      setResolvingConflict(null);
+      setResolutionNotes("");
+      await loadAllReconstructedData();
+    } catch (e) {
+      console.error("Failed to resolve conflict:", e);
+    } finally {
+      setActionLoading(false);
+    }
+  }
+
+  async function handleApplyDismissal() {
+    if (!dismissingConflict || !dismissalNotes.trim()) return;
+    setActionLoading(true);
+    try {
+      await api.dismissConflict(dismissingConflict.id, dismissalNotes.trim());
+      setDismissingConflict(null);
+      setDismissalNotes("");
+      await loadAllReconstructedData();
+    } catch (e) {
+      console.error("Failed to dismiss conflict:", e);
+    } finally {
+      setActionLoading(false);
+    }
+  }
+
+  async function handleOpenHistory(conflict: KnowledgeConflict) {
+    setViewingHistoryConflict(conflict);
+    setHistoryLoading(true);
+    try {
+      const res = await api.getConflictHistory(conflict.id);
+      setConflictHistory(res.history || []);
+    } catch (e) {
+      console.error("Failed loading conflict history:", e);
+      setConflictHistory([]);
+    } finally {
+      setHistoryLoading(false);
     }
   }
 
@@ -409,6 +497,16 @@ export function KnowledgeView() {
         >
           <GitCompare className="w-3.5 h-3.5" />
           Contradictions ({conflicts.length})
+        </button>
+
+        <button
+          onClick={() => setActiveTab("EVIDENCE_QUALITY")}
+          className={`px-3.5 py-2 rounded-lg font-bold transition whitespace-nowrap flex items-center gap-1.5 ${
+            activeTab === "EVIDENCE_QUALITY" ? "bg-teal-700 text-white shadow-xs" : "text-teal-800 bg-teal-50 hover:bg-teal-100"
+          }`}
+        >
+          <ShieldCheck className="w-3.5 h-3.5" />
+          Evidence Quality ({evidenceSummary ? `${evidenceSummary.coverage_percentage}%` : "100%"})
         </button>
       </div>
 
@@ -999,86 +1097,628 @@ export function KnowledgeView() {
           )}
         </div>
       ) : activeTab === "CONFLICTS" ? (
-        /* TAB 7: CONFLICTS RESOLVER VIEW */
+        /* TAB 7: CONFLICTS RESOLVER WORKSPACE */
         <div className="space-y-4">
-          {conflicts.length === 0 ? (
-            <div className="bg-white p-16 rounded-xl border border-slate-200 text-center space-y-2">
-              <CheckCircle className="w-10 h-10 text-emerald-500 mx-auto" />
-              <h3 className="text-sm font-semibold text-slate-800">No Contradictions Detected</h3>
-              <p className="text-xs text-slate-500">
-                All statements across project documents agree on task statuses, ownership, and delivery dates.
-              </p>
+          {/* Workspace Filters */}
+          <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-2xs flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-2 flex-wrap text-xs">
+              <span className="font-bold text-slate-700 flex items-center gap-1">
+                <Filter className="w-3.5 h-3.5 text-slate-500" />
+                Status:
+              </span>
+              {["ALL", "OPEN", "UNDER_REVIEW", "RESOLVED", "DISMISSED"].map((st) => (
+                <button
+                  key={st}
+                  onClick={() => setConflictStatusFilter(st)}
+                  className={`px-2.5 py-1 rounded-md font-semibold text-[11px] transition ${
+                    conflictStatusFilter === st
+                      ? "bg-slate-900 text-white"
+                      : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                  }`}
+                >
+                  {st.replace("_", " ")}
+                </button>
+              ))}
             </div>
-          ) : (
-            <div className="space-y-4">
-              <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-900 flex items-start gap-2">
-                <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
-                <div>
-                  <h4 className="font-bold text-amber-950">Detected Cross-Document Inconsistencies</h4>
-                  <p className="mt-0.5 text-amber-800">
-                    The platform has identified conflicting facts between multiple source documents. Both versions are
-                    preserved with original citations for human review.
+
+            <div className="flex items-center gap-2 flex-wrap text-xs">
+              <span className="font-bold text-slate-700">Severity:</span>
+              {["ALL", "CRITICAL", "HIGH", "MEDIUM", "LOW"].map((sev) => (
+                <button
+                  key={sev}
+                  onClick={() => setConflictSeverityFilter(sev)}
+                  className={`px-2.5 py-1 rounded-md font-semibold text-[11px] transition ${
+                    conflictSeverityFilter === sev
+                      ? "bg-amber-700 text-white"
+                      : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                  }`}
+                >
+                  {sev}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {(() => {
+            const filteredConflicts = conflicts.filter((c) => {
+              const statusMatch =
+                conflictStatusFilter === "ALL" ||
+                (c.conflict_status || c.status || "").toUpperCase() === conflictStatusFilter;
+              const severityMatch =
+                conflictSeverityFilter === "ALL" ||
+                (c.severity || "MEDIUM").toUpperCase() === conflictSeverityFilter;
+              return statusMatch && severityMatch;
+            });
+
+            if (filteredConflicts.length === 0) {
+              return (
+                <div className="bg-white p-16 rounded-xl border border-slate-200 text-center space-y-2">
+                  <CheckCircle className="w-10 h-10 text-emerald-500 mx-auto" />
+                  <h3 className="text-sm font-semibold text-slate-800">No Matching Contradictions</h3>
+                  <p className="text-xs text-slate-500">
+                    No cross-document inconsistencies match the selected filter criteria.
                   </p>
+                </div>
+              );
+            }
+
+            return (
+              <div className="space-y-4">
+                <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-900 flex items-start gap-2">
+                  <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+                  <div>
+                    <h4 className="font-bold text-amber-950">Evidence Conflict Management & Human Resolution</h4>
+                    <p className="mt-0.5 text-amber-800">
+                      Cross-document contradictions require human review. Resolutions update the active project state
+                      and timeline non-destructively, preserving historical claims and source quotations in the audit trail.
+                    </p>
+                  </div>
+                </div>
+
+                {filteredConflicts.map((c) => {
+                  const cStatus = (c.conflict_status || c.status || "OPEN").toUpperCase();
+                  const cSeverity = (c.severity || "MEDIUM").toUpperCase();
+
+                  const sevBadgeColor =
+                    cSeverity === "CRITICAL"
+                      ? "bg-rose-100 text-rose-800 border-rose-300"
+                      : cSeverity === "HIGH"
+                      ? "bg-orange-100 text-orange-800 border-orange-300"
+                      : cSeverity === "LOW"
+                      ? "bg-blue-100 text-blue-800 border-blue-300"
+                      : "bg-amber-100 text-amber-800 border-amber-300";
+
+                  const statusBadgeColor =
+                    cStatus === "RESOLVED"
+                      ? "bg-emerald-100 text-emerald-800 border-emerald-300"
+                      : cStatus === "DISMISSED"
+                      ? "bg-slate-100 text-slate-700 border-slate-300"
+                      : cStatus === "UNDER_REVIEW"
+                      ? "bg-purple-100 text-purple-800 border-purple-300"
+                      : "bg-amber-100 text-amber-800 border-amber-300";
+
+                  return (
+                    <div key={c.id} className="bg-white rounded-xl border border-slate-200 p-6 shadow-2xs space-y-4">
+                      {/* Conflict Header */}
+                      <div className="flex flex-wrap items-center justify-between gap-2 pb-3 border-b border-slate-100">
+                        <div className="flex items-center gap-2">
+                          <span className={`text-[10px] font-bold uppercase tracking-wider px-2.5 py-0.5 rounded border ${sevBadgeColor}`}>
+                            Severity: {cSeverity}
+                          </span>
+                          <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-slate-100 text-slate-700 border border-slate-200">
+                            Type: {c.conflict_type}
+                          </span>
+                          <span className={`text-[10px] font-bold uppercase tracking-wider px-2.5 py-0.5 rounded border ${statusBadgeColor}`}>
+                            Status: {cStatus.replace("_", " ")}
+                          </span>
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => handleOpenHistory(c)}
+                            className="px-2.5 py-1 text-xs font-semibold rounded-lg bg-slate-100 text-slate-700 hover:bg-slate-200 transition flex items-center gap-1"
+                          >
+                            <History className="w-3.5 h-3.5 text-slate-500" />
+                            Audit Trail
+                          </button>
+
+                          {canReview && cStatus === "OPEN" && (
+                            <button
+                              onClick={() => handleStartReview(c.id)}
+                              disabled={actionLoading}
+                              className="px-2.5 py-1 text-xs font-semibold rounded-lg bg-purple-50 text-purple-700 hover:bg-purple-100 border border-purple-200 transition disabled:opacity-50"
+                            >
+                              Start Review
+                            </button>
+                          )}
+
+                          {canReview && (cStatus === "OPEN" || cStatus === "UNDER_REVIEW") && (
+                            <>
+                              <button
+                                onClick={() => {
+                                  setResolvingConflict(c);
+                                  setResolutionChoice("CLAIM_A_SUPPORTED");
+                                  setResolutionNotes("");
+                                }}
+                                className="px-3 py-1 text-xs font-bold rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white shadow-2xs transition flex items-center gap-1"
+                              >
+                                <Scale className="w-3.5 h-3.5" />
+                                Resolve Contradiction
+                              </button>
+
+                              <button
+                                onClick={() => {
+                                  setDismissingConflict(c);
+                                  setDismissalNotes("");
+                                }}
+                                className="px-2.5 py-1 text-xs font-semibold rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 transition"
+                              >
+                                Dismiss
+                              </button>
+                            </>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Conflict Title & Description */}
+                      <div>
+                        <h3 className="text-sm font-bold text-slate-900">{c.title || c.description}</h3>
+                        {c.title && c.description && c.title !== c.description && (
+                          <p className="text-xs text-slate-600 mt-1">{c.description}</p>
+                        )}
+                      </div>
+
+                      {/* Side-by-Side Source Comparison */}
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {/* Claim A */}
+                        <div className="bg-slate-50/80 p-4 rounded-xl border border-slate-200 space-y-2">
+                          <div className="flex items-center justify-between text-xs text-slate-600 font-semibold pb-1.5 border-b border-slate-200">
+                            <span className="flex items-center gap-1">
+                              <FileText className="w-3.5 h-3.5 text-teal-600" />
+                              {c.source_1_doc_filename || c.source_a_doc_filename || "Document A"}
+                            </span>
+                            <span className="bg-white px-2 py-0.5 rounded border border-slate-200 text-slate-700 font-mono text-[11px]">
+                              Page {c.source_1_page || c.source_a_page || 1}
+                            </span>
+                          </div>
+                          <span className="text-[10px] font-bold uppercase tracking-wider text-teal-700 block">
+                            Claim A Source Quotation:
+                          </span>
+                          <blockquote className="text-xs italic text-slate-800 bg-white p-3 rounded-lg border border-slate-200">
+                            &ldquo;{c.source_1_quote || c.source_a_quote || "Quotation unavailable"}&rdquo;
+                          </blockquote>
+                        </div>
+
+                        {/* Claim B */}
+                        <div className="bg-slate-50/80 p-4 rounded-xl border border-slate-200 space-y-2">
+                          <div className="flex items-center justify-between text-xs text-slate-600 font-semibold pb-1.5 border-b border-slate-200">
+                            <span className="flex items-center gap-1">
+                              <FileText className="w-3.5 h-3.5 text-teal-600" />
+                              {c.source_2_doc_filename || c.source_b_doc_filename || "Document B"}
+                            </span>
+                            <span className="bg-white px-2 py-0.5 rounded border border-slate-200 text-slate-700 font-mono text-[11px]">
+                              Page {c.source_2_page || c.source_b_page || 1}
+                            </span>
+                          </div>
+                          <span className="text-[10px] font-bold uppercase tracking-wider text-teal-700 block">
+                            Claim B Source Quotation:
+                          </span>
+                          <blockquote className="text-xs italic text-slate-800 bg-white p-3 rounded-lg border border-slate-200">
+                            &ldquo;{c.source_2_quote || c.source_b_quote || "Quotation unavailable"}&rdquo;
+                          </blockquote>
+                        </div>
+                      </div>
+
+                      {/* Resolution Summary Banner if Resolved */}
+                      {cStatus === "RESOLVED" && (
+                        <div className="p-4 bg-emerald-50/80 border border-emerald-200 rounded-xl text-xs space-y-1.5">
+                          <div className="flex items-center gap-1.5 text-emerald-900 font-bold uppercase tracking-wide">
+                            <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                            Approved Human Resolution: {c.resolution_choice?.replace(/_/g, " ")}
+                          </div>
+                          <p className="text-emerald-950 font-medium">
+                            <span className="font-semibold text-emerald-900">Rationale:</span> {c.resolution_notes}
+                          </p>
+                          <div className="text-[11px] text-emerald-700 flex items-center gap-3 pt-1">
+                            <span>Resolved by: {c.resolver_name || "Authorized Reviewer"}</span>
+                            {c.resolved_at && (
+                              <span>• {new Date(c.resolved_at).toLocaleString()}</span>
+                            )}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Dismissal Summary Banner if Dismissed */}
+                      {cStatus === "DISMISSED" && (
+                        <div className="p-4 bg-slate-100 border border-slate-200 rounded-xl text-xs space-y-1">
+                          <div className="flex items-center gap-1.5 text-slate-800 font-bold uppercase tracking-wide">
+                            <Info className="w-4 h-4 text-slate-500" />
+                            Contradiction Dismissed
+                          </div>
+                          <p className="text-slate-700 font-medium">{c.resolution_notes}</p>
+                          {c.resolved_at && (
+                            <p className="text-[11px] text-slate-500">Dismissed at: {new Date(c.resolved_at).toLocaleString()}</p>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          })()}
+        </div>
+      ) : activeTab === "EVIDENCE_QUALITY" ? (
+        /* TAB 8: EVIDENCE QUALITY & INTEGRITY METRICS DASHBOARD */
+        <div className="space-y-6">
+          {/* Top Headline Card */}
+          <div className="bg-gradient-to-r from-teal-900 to-slate-900 text-white p-6 rounded-xl border border-teal-800 shadow-md">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
+              <div className="space-y-2">
+                <span className="text-xs font-bold uppercase tracking-widest text-teal-400 flex items-center gap-1.5">
+                  <ShieldCheck className="w-4 h-4" />
+                  Deterministic Source Provenance Standard
+                </span>
+                <h3 className="text-2xl font-black tracking-tight">Evidence Coverage & Verification Reliability</h3>
+                <p className="text-xs text-slate-300 max-w-xl">
+                  Every factual finding displayed on the Knowledge Continuity platform is traceable to an exact passage in
+                  an authorized project document. AI-derived assumptions are strictly partitioned from verified source facts.
+                </p>
+              </div>
+
+              <div className="bg-white/10 backdrop-blur-xs p-5 rounded-xl border border-white/20 text-center shrink-0 min-w-[200px]">
+                <div className="text-[11px] uppercase font-semibold text-teal-200">Overall Coverage</div>
+                <div className="text-4xl font-black text-white mt-1">
+                  {evidenceSummary ? `${evidenceSummary.coverage_percentage}%` : "100%"}
+                </div>
+                <div className="text-xs text-teal-300 mt-1 font-mono">
+                  {evidenceSummary ? evidenceSummary.coverage_fraction : "0 / 0"}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Quality Breakdown Counters */}
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+            <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-2xs">
+              <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Verified Findings</div>
+              <div className="text-2xl font-bold text-emerald-600 mt-1">
+                {evidenceSummary ? evidenceSummary.verified_count : 0}
+              </div>
+              <div className="text-[10px] text-slate-500 mt-1">Full 8-point check passed</div>
+            </div>
+
+            <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-2xs">
+              <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Unsupported Claims</div>
+              <div className="text-2xl font-bold text-rose-600 mt-1">
+                {evidenceSummary ? evidenceSummary.unsupported_count : 0}
+              </div>
+              <div className="text-[10px] text-slate-500 mt-1">Missing source citation</div>
+            </div>
+
+            <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-2xs">
+              <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Needs Human Review</div>
+              <div className="text-2xl font-bold text-amber-600 mt-1">
+                {evidenceSummary ? evidenceSummary.needs_review_count : 0}
+              </div>
+              <div className="text-[10px] text-slate-500 mt-1">Ambiguous or partial quote</div>
+            </div>
+
+            <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-2xs">
+              <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Open Contradictions</div>
+              <div className="text-2xl font-bold text-orange-600 mt-1">
+                {evidenceSummary ? evidenceSummary.conflicted_count : 0}
+              </div>
+              <div className="text-[10px] text-slate-500 mt-1">Conflicting statements</div>
+            </div>
+
+            <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-2xs">
+              <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Broken Citations</div>
+              <div className="text-2xl font-bold text-slate-700 mt-1">
+                {evidenceSummary ? evidenceSummary.broken_citations_count : 0}
+              </div>
+              <div className="text-[10px] text-slate-500 mt-1">Orphaned/deleted documents</div>
+            </div>
+          </div>
+
+          {/* Document Breakdown Table */}
+          <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-2xs space-y-4">
+            <div className="flex items-center justify-between">
+              <h4 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                <FileCheck className="w-4 h-4 text-teal-600" />
+                Document Provenance & Extraction Reliability
+              </h4>
+              <button
+                onClick={handleReverify}
+                disabled={isReverifying}
+                className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-teal-50 text-teal-700 hover:bg-teal-100 border border-teal-200 transition flex items-center gap-1.5 disabled:opacity-50"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${isReverifying ? "animate-spin" : ""}`} />
+                Re-run Full Integrity Check
+              </button>
+            </div>
+
+            {evidenceSummary && evidenceSummary.by_document.length > 0 ? (
+              <div className="overflow-x-auto border border-slate-100 rounded-lg">
+                <table className="w-full text-left text-xs">
+                  <thead className="bg-slate-50 text-slate-600 font-semibold border-b border-slate-200">
+                    <tr>
+                      <th className="py-2.5 px-4">Document Filename</th>
+                      <th className="py-2.5 px-4">Extracted Findings</th>
+                      <th className="py-2.5 px-4">Verified Findings</th>
+                      <th className="py-2.5 px-4">Evidence Coverage</th>
+                      <th className="py-2.5 px-4">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 text-slate-700">
+                    {evidenceSummary.by_document.map((doc) => (
+                      <tr key={doc.document_id} className="hover:bg-slate-50/50">
+                        <td className="py-2.5 px-4 font-semibold text-slate-900 flex items-center gap-1.5">
+                          <FileText className="w-3.5 h-3.5 text-teal-600" />
+                          {doc.filename}
+                        </td>
+                        <td className="py-2.5 px-4">{doc.total_findings}</td>
+                        <td className="py-2.5 px-4 font-medium text-emerald-600">{doc.verified_findings}</td>
+                        <td className="py-2.5 px-4">
+                          <div className="flex items-center gap-2">
+                            <div className="w-24 bg-slate-100 h-2 rounded-full overflow-hidden">
+                              <div
+                                className="bg-teal-600 h-full rounded-full"
+                                style={{ width: `${Math.min(doc.coverage_pct, 100)}%` }}
+                              />
+                            </div>
+                            <span className="font-semibold text-[11px] text-slate-800">{doc.coverage_pct}%</span>
+                          </div>
+                        </td>
+                        <td className="py-2.5 px-4">
+                          {doc.coverage_pct >= 90 ? (
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800">
+                              Reliable
+                            </span>
+                          ) : (
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800">
+                              Review Needed
+                            </span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <div className="p-8 text-center text-xs text-slate-500">
+                No indexed document citations available yet.
+              </div>
+            )}
+          </div>
+        </div>
+      ) : null}
+
+      {/* Conflict Resolution Modal */}
+      {resolvingConflict && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4 animate-in fade-in duration-200">
+          <div className="relative w-full max-w-2xl bg-white rounded-xl shadow-2xl border border-slate-200 overflow-hidden">
+            <div className="flex items-center justify-between px-6 py-4 bg-slate-900 text-white">
+              <div className="flex items-center gap-2">
+                <Scale className="w-5 h-5 text-teal-400" />
+                <h3 className="font-bold text-base">Human Conflict Resolution Workspace</h3>
+              </div>
+              <button
+                onClick={() => setResolvingConflict(null)}
+                className="p-1 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-white transition"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-4 max-h-[80vh] overflow-y-auto text-xs">
+              <div>
+                <h4 className="font-bold text-sm text-slate-900">{resolvingConflict.title || resolvingConflict.description}</h4>
+                <p className="text-slate-600 mt-1">{resolvingConflict.description}</p>
+              </div>
+
+              {/* Side-by-side comparison */}
+              <div className="grid grid-cols-2 gap-3 p-3 bg-slate-50 rounded-xl border border-slate-200">
+                <div className="space-y-1">
+                  <span className="font-bold text-teal-800 text-[11px] block">Claim A ({resolvingConflict.source_1_doc_filename || "Doc 1"})</span>
+                  <blockquote className="bg-white p-2.5 rounded border border-slate-200 italic text-slate-800">
+                    &ldquo;{resolvingConflict.source_1_quote || "Unavailable"}&rdquo;
+                  </blockquote>
+                </div>
+                <div className="space-y-1">
+                  <span className="font-bold text-teal-800 text-[11px] block">Claim B ({resolvingConflict.source_2_doc_filename || "Doc 2"})</span>
+                  <blockquote className="bg-white p-2.5 rounded border border-slate-200 italic text-slate-800">
+                    &ldquo;{resolvingConflict.source_2_quote || "Unavailable"}&rdquo;
+                  </blockquote>
                 </div>
               </div>
 
-              {conflicts.map((c) => (
-                <div key={c.id} className="bg-white rounded-xl border border-amber-200 p-6 shadow-2xs space-y-4">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-bold uppercase tracking-wider px-2.5 py-0.5 rounded bg-amber-100 text-amber-800 border border-amber-300">
-                      Conflict Type: {c.conflict_type}
-                    </span>
-                    <span className="text-xs font-semibold px-2 py-0.5 rounded bg-slate-100 text-slate-600">
-                      Status: {c.status}
-                    </span>
-                  </div>
+              {/* Resolution Choice Dropdown */}
+              <div className="space-y-1.5">
+                <label className="font-bold text-slate-800 block">Select Resolution Outcome:</label>
+                <select
+                  value={resolutionChoice}
+                  onChange={(e) => setResolutionChoice(e.target.value as ResolutionChoice)}
+                  className="w-full px-3 py-2 rounded-lg border border-slate-300 bg-white font-medium text-xs focus:ring-2 focus:ring-teal-500 focus:outline-hidden"
+                >
+                  <option value="CLAIM_A_SUPPORTED">Claim A Supported (Claim A is verified truth; supersede Claim B)</option>
+                  <option value="CLAIM_B_SUPPORTED">Claim B Supported (Claim B is verified truth; supersede Claim A)</option>
+                  <option value="BOTH_VALID_DIFFERENT_CONTEXT">Both Valid in Different Contexts (Retain both with contextual note)</option>
+                  <option value="NEITHER_SUPPORTED">Neither Supported (Reject both claims as unverified)</option>
+                  <option value="INVESTIGATION_REQUIRED">Investigation Required (Disputed — flag for further team enquiry)</option>
+                </select>
+              </div>
 
-                  <h3 className="text-sm font-bold text-slate-900">{c.description}</h3>
+              {/* Mandatory Resolution Explanation */}
+              <div className="space-y-1.5">
+                <label className="font-bold text-slate-800 block">
+                  Mandatory Reviewer Explanation <span className="text-rose-500">*</span>:
+                </label>
+                <textarea
+                  value={resolutionNotes}
+                  onChange={(e) => setResolutionNotes(e.target.value)}
+                  placeholder="Provide detailed rationale for why this resolution was chosen (min 5 characters)..."
+                  rows={3}
+                  className="w-full p-3 rounded-lg border border-slate-300 text-xs focus:ring-2 focus:ring-teal-500 focus:outline-hidden"
+                />
+              </div>
 
-                  {/* Side-by-Side Source Comparison */}
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-2">
-                      <div className="flex items-center justify-between text-xs text-slate-600 font-semibold pb-1.5 border-b border-slate-200">
-                        <span className="flex items-center gap-1">
-                          <FileText className="w-3.5 h-3.5 text-teal-600" />
-                          {c.source_1_doc_filename || "Document 1"}
-                        </span>
-                        <span className="bg-white px-2 py-0.5 rounded border border-slate-200 text-slate-700">
-                          Page {c.source_1_page || 1}
-                        </span>
-                      </div>
-                      <blockquote className="text-xs italic text-slate-800 bg-white p-3 rounded-lg border border-slate-200">
-                        &ldquo;{c.source_1_quote || "Quotation unavailable"}&rdquo;
-                      </blockquote>
-                    </div>
-
-                    <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-2">
-                      <div className="flex items-center justify-between text-xs text-slate-600 font-semibold pb-1.5 border-b border-slate-200">
-                        <span className="flex items-center gap-1">
-                          <FileText className="w-3.5 h-3.5 text-teal-600" />
-                          {c.source_2_doc_filename || "Document 2"}
-                        </span>
-                        <span className="bg-white px-2 py-0.5 rounded border border-slate-200 text-slate-700">
-                          Page {c.source_2_page || 1}
-                        </span>
-                      </div>
-                      <blockquote className="text-xs italic text-slate-800 bg-white p-3 rounded-lg border border-slate-200">
-                        &ldquo;{c.source_2_quote || "Quotation unavailable"}&rdquo;
-                      </blockquote>
-                    </div>
-                  </div>
-                </div>
-              ))}
+              {/* Non-destructive notice */}
+              <div className="p-3 bg-teal-50/60 border border-teal-200 rounded-lg text-teal-900 text-[11px] flex items-start gap-2">
+                <Info className="w-4 h-4 text-teal-600 shrink-0 mt-0.5" />
+                <span>
+                  <strong>Non-Destructive Update:</strong> Neither original finding or document quotation will be deleted.
+                  Both statements remain archived for historical transparency. The active reconstructed timeline and handover
+                  dossier will reflect this approved resolution.
+                </span>
+              </div>
             </div>
-          )}
+
+            <div className="px-6 py-3 bg-slate-50 border-t border-slate-200 flex justify-end gap-2">
+              <button
+                onClick={() => setResolvingConflict(null)}
+                className="px-4 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 text-xs font-semibold rounded-lg transition"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleApplyResolution}
+                disabled={resolutionNotes.trim().length < 5 || actionLoading}
+                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-lg transition disabled:opacity-50 flex items-center gap-1.5"
+              >
+                {actionLoading && <RefreshCw className="w-3.5 h-3.5 animate-spin" />}
+                Confirm & Apply Resolution
+              </button>
+            </div>
+          </div>
         </div>
-      ) : null}
+      )}
+
+      {/* Conflict Dismissal Modal */}
+      {dismissingConflict && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4 animate-in fade-in duration-200">
+          <div className="relative w-full max-w-md bg-white rounded-xl shadow-2xl border border-slate-200 overflow-hidden">
+            <div className="flex items-center justify-between px-6 py-4 bg-slate-900 text-white">
+              <h3 className="font-bold text-base">Dismiss Contradiction</h3>
+              <button
+                onClick={() => setDismissingConflict(null)}
+                className="p-1 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-white transition"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-4 text-xs">
+              <p className="text-slate-600">
+                Dismissing this contradiction removes the CONFLICTED status from the associated findings and marks the
+                issue as resolved/ignored in the project records.
+              </p>
+
+              <div className="space-y-1.5">
+                <label className="font-bold text-slate-800 block">
+                  Dismissal Reason <span className="text-rose-500">*</span>:
+                </label>
+                <textarea
+                  value={dismissalNotes}
+                  onChange={(e) => setDismissalNotes(e.target.value)}
+                  placeholder="Explain why this conflict is dismissed or not applicable (min 5 characters)..."
+                  rows={3}
+                  className="w-full p-3 rounded-lg border border-slate-300 text-xs focus:ring-2 focus:ring-teal-500 focus:outline-hidden"
+                />
+              </div>
+            </div>
+
+            <div className="px-6 py-3 bg-slate-50 border-t border-slate-200 flex justify-end gap-2">
+              <button
+                onClick={() => setDismissingConflict(null)}
+                className="px-4 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 text-xs font-semibold rounded-lg transition"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleApplyDismissal}
+                disabled={dismissalNotes.trim().length < 5 || actionLoading}
+                className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold rounded-lg transition disabled:opacity-50"
+              >
+                Confirm Dismissal
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Conflict Audit History Modal */}
+      {viewingHistoryConflict && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4 animate-in fade-in duration-200">
+          <div className="relative w-full max-w-xl bg-white rounded-xl shadow-2xl border border-slate-200 overflow-hidden">
+            <div className="flex items-center justify-between px-6 py-4 bg-slate-900 text-white">
+              <div className="flex items-center gap-2">
+                <History className="w-5 h-5 text-teal-400" />
+                <h3 className="font-bold text-base">Conflict Audit Trail & Review History</h3>
+              </div>
+              <button
+                onClick={() => setViewingHistoryConflict(null)}
+                className="p-1 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-white transition"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-4 max-h-[70vh] overflow-y-auto text-xs">
+              <h4 className="font-bold text-slate-900">{viewingHistoryConflict.title || viewingHistoryConflict.description}</h4>
+
+              {historyLoading ? (
+                <div className="p-8 text-center text-slate-500">
+                  <RefreshCw className="w-5 h-5 animate-spin mx-auto text-teal-600 mb-2" />
+                  Loading audit logs...
+                </div>
+              ) : conflictHistory.length === 0 ? (
+                <div className="p-8 text-center text-slate-500 bg-slate-50 rounded-xl">
+                  No previous review or resolution activity recorded yet for this conflict.
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {conflictHistory.map((item) => (
+                    <div key={item.id} className="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-1">
+                      <div className="flex items-center justify-between font-bold text-slate-900">
+                        <span className="uppercase tracking-wider text-[11px] text-teal-700">{item.action}</span>
+                        <span className="text-[11px] font-normal text-slate-500">
+                          {new Date(item.created_at).toLocaleString()}
+                        </span>
+                      </div>
+                      <div className="text-slate-700">
+                        <span className="font-semibold">Actor:</span> {item.user_name || "System"}
+                      </div>
+                      {item.details && (
+                        <div className="text-slate-600 bg-white p-2 rounded border border-slate-100 font-mono text-[10px] whitespace-pre-wrap">
+                          {JSON.stringify(item.details, null, 2)}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="px-6 py-3 bg-slate-50 border-t border-slate-200 flex justify-end">
+              <button
+                onClick={() => setViewingHistoryConflict(null)}
+                className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold rounded-lg transition"
+              >
+                Close History
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Evidence Inspector Modal */}
       {inspectFinding && (
         <EvidenceModal
           finding={inspectFinding}
           onClose={() => setInspectFinding(null)}
+          onRefresh={loadAllReconstructedData}
         />
       )}
 
@@ -1088,7 +1728,7 @@ export function KnowledgeView() {
           finding={reviewFinding}
           projectId={currentProject.id}
           onClose={() => setReviewFinding(null)}
-          onSubmit={() => {}}
+          onSubmit={loadAllReconstructedData}
         />
       )}
     </div>

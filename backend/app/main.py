@@ -26,7 +26,8 @@ from backend.app.routers import (
     permissions,
     review as reviews,
     analytics,
-    audit
+    audit,
+    conflicts
 )
 
 # Initialize structured logging
@@ -71,6 +72,7 @@ def register_api_routers(prefix: str):
     app.include_router(reviews.router, prefix=prefix)
     app.include_router(analytics.router, prefix=prefix)
     app.include_router(audit.router, prefix=prefix)
+    app.include_router(conflicts.router, prefix=prefix)
 
 # Mount both /api/v1 and /api for full specification and legacy compatibility
 register_api_routers("/api/v1")
