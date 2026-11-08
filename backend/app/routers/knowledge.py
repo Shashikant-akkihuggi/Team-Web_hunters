@@ -10,10 +10,18 @@ from backend.app.models import (
 )
 from backend.app.schemas import (
     FindingCreate, FindingUpdate, FindingResponse, EvidenceReferenceResponse,
-    KnowledgeConflictResponse, FindingEvidenceDetailResponse, ProjectKnowledgeSummary
+    KnowledgeConflictResponse, FindingEvidenceDetailResponse, ProjectKnowledgeSummary,
+    ProjectStateResponse, DecisionTimelineResponse, TaskTimelineResponse,
+    DependencyGraphResponse, ResponsibilitiesResponse, RiskRegisterResponse,
+    KnowledgeSearchResponse, ReconstructProjectRequest
 )
 from backend.app.auth import get_current_user, check_project_access
 from backend.app.services.verification_service import run_project_verification
+from backend.app.services.reconstruction_service import (
+    reconstruct_project_state, get_decision_timeline, get_task_timeline,
+    get_dependency_graph, get_responsibilities, get_risk_register,
+    search_project_knowledge
+)
 
 router = APIRouter(tags=["Knowledge & Intelligence"])
 
@@ -289,6 +297,112 @@ def get_finding_evidence_detail(
         verified_at=ref.verified_at if ref else None,
         flags=finding.flags or {}
     )
+
+# --- Phase 5 Project Knowledge Reconstruction Endpoints ---
+
+@router.get("/projects/{project_id}/state", response_model=ProjectStateResponse)
+def get_project_state(
+    project_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Returns unified reconstructed project state, including overview KPIs,
+    task completion state, ownership matrix, and uncertainty metrics.
+    """
+    check_project_access(project_id, current_user, db)
+    return reconstruct_project_state(project_id=project_id, db=db, user_id=current_user.id)
+
+@router.post("/projects/{project_id}/knowledge/reconstruct", response_model=ProjectStateResponse)
+def trigger_project_reconstruction(
+    project_id: str,
+    payload: Optional[ReconstructProjectRequest] = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Triggers fresh project state reconstruction from current database findings.
+    """
+    check_project_access(project_id, current_user, db, allowed_roles=[UserRole.ADMIN, UserRole.PROJECT_MANAGER, UserRole.OUTGOING_MEMBER])
+    force = payload.force if payload else False
+    return reconstruct_project_state(project_id=project_id, db=db, user_id=current_user.id, force=force)
+
+@router.get("/projects/{project_id}/timeline", response_model=DecisionTimelineResponse)
+def get_decision_timeline_endpoint(
+    project_id: str,
+    search: Optional[str] = Query(None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Returns chronological decision timeline, separating dated decisions from undated decisions.
+    """
+    check_project_access(project_id, current_user, db)
+    return get_decision_timeline(project_id=project_id, db=db, search=search)
+
+@router.get("/projects/{project_id}/tasks/timeline", response_model=TaskTimelineResponse)
+def get_task_timeline_endpoint(
+    project_id: str,
+    status: Optional[str] = Query(None),
+    owner: Optional[str] = Query(None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Returns chronological task schedule with overdue identification and dependency links.
+    """
+    check_project_access(project_id, current_user, db)
+    return get_task_timeline(project_id=project_id, db=db, status_filter=status, owner_filter=owner)
+
+@router.get("/projects/{project_id}/dependencies/graph", response_model=DependencyGraphResponse)
+def get_dependency_graph_endpoint(
+    project_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Builds relationship dependency graph between project entities with cycle detection.
+    """
+    check_project_access(project_id, current_user, db)
+    return get_dependency_graph(project_id=project_id, db=db)
+
+@router.get("/projects/{project_id}/responsibilities", response_model=ResponsibilitiesResponse)
+def get_responsibilities_endpoint(
+    project_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Returns responsibility mapping per team member and identifies unassigned tasks.
+    """
+    check_project_access(project_id, current_user, db)
+    return get_responsibilities(project_id=project_id, db=db)
+
+@router.get("/projects/{project_id}/risk-register", response_model=RiskRegisterResponse)
+def get_risk_register_endpoint(
+    project_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Returns consolidated risk register, distinguishing source risks from AI recommendations.
+    """
+    check_project_access(project_id, current_user, db)
+    return get_risk_register(project_id=project_id, db=db)
+
+@router.get("/projects/{project_id}/knowledge/search", response_model=KnowledgeSearchResponse)
+def search_knowledge_endpoint(
+    project_id: str,
+    q: str = Query(..., min_length=1),
+    entity_type: Optional[str] = Query(None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Project-scoped search across all extracted findings and metadata.
+    """
+    check_project_access(project_id, current_user, db)
+    return search_project_knowledge(project_id=project_id, query_str=q, db=db, entity_type_filter=entity_type)
 
 # --- Backward-compatible endpoints ---
 

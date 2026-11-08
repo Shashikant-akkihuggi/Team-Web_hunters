@@ -235,6 +235,227 @@ export interface ProjectKnowledgeSummary {
   verified_percentage: number;
 }
 
+// --- Phase 5 Project Knowledge Reconstruction Types ---
+
+export interface ProjectOverviewState {
+  total_tasks: number;
+  completed_tasks: number;
+  in_progress_tasks: number;
+  blocked_tasks: number;
+  not_started_tasks: number;
+  unknown_status_tasks: number;
+  completion_rate: number;
+  total_decisions: number;
+  open_risks: number;
+  unresolved_questions: number;
+  total_dependencies: number;
+}
+
+export interface ProjectOwnershipState {
+  assigned_tasks_count: number;
+  unassigned_tasks_count: number;
+  distinct_owners_count: number;
+  ambiguous_owners_count: number;
+  ownership_conflicts_count: number;
+}
+
+export interface ProjectUncertaintyState {
+  missing_deadlines_count: number;
+  unknown_ownership_count: number;
+  conflicting_statuses_count: number;
+  unsupported_claims_count: number;
+}
+
+export interface ProjectStateResponse {
+  project_id: string;
+  project_name: string;
+  project_description?: string | null;
+  project_status: string;
+  last_reconstructed_at?: string | null;
+  version: number;
+  freshness_status: string;
+  overview: ProjectOverviewState;
+  ownership_state: ProjectOwnershipState;
+  uncertainty_state: ProjectUncertaintyState;
+  active_blockers_summary: Array<{
+    id: string;
+    title: string;
+    description: string;
+    supporting_quotation?: string | null;
+    page_number?: number | null;
+  }>;
+  recent_decisions_summary: Array<{
+    id: string;
+    title: string;
+    description: string;
+    decision_date?: string | null;
+    decided_by?: string | null;
+    page_number?: number | null;
+  }>;
+}
+
+export interface DecisionTimelineEvent {
+  id: string;
+  project_id: string;
+  title: string;
+  description: string;
+  decision_date?: string | null;
+  normalized_date?: string | null;
+  has_date: boolean;
+  decided_by?: string | null;
+  source_document?: string | null;
+  document_id?: string | null;
+  supporting_quotation?: string | null;
+  page_number?: number | null;
+  verification_status: VerificationStatus;
+  confidence_score: number;
+  flags: FindingFlags;
+  created_at?: string | null;
+}
+
+export interface DecisionTimelineResponse {
+  dated_events: DecisionTimelineEvent[];
+  undated_events: DecisionTimelineEvent[];
+  total_decisions: number;
+}
+
+export interface TaskTimelineItem {
+  id: string;
+  title: string;
+  description: string;
+  owner?: string | null;
+  has_owner: boolean;
+  deadline?: string | null;
+  normalized_deadline?: string | null;
+  has_deadline: boolean;
+  start_date?: string | null;
+  task_status: string;
+  priority?: string | null;
+  is_overdue: boolean;
+  dependencies: string[];
+  supporting_quotation?: string | null;
+  page_number?: number | null;
+  document_filename?: string | null;
+  verification_status: VerificationStatus;
+}
+
+export interface TaskTimelineResponse {
+  tasks: TaskTimelineItem[];
+  total_tasks: number;
+  completed_count: number;
+  in_progress_count: number;
+  blocked_count: number;
+  overdue_count: number;
+  unassigned_count: number;
+}
+
+export interface DependencyGraphNode {
+  id: string;
+  label: string;
+  entity_type: string;
+  status?: string | null;
+  owner?: string | null;
+  supporting_quotation?: string | null;
+  page_number?: number | null;
+  document_filename?: string | null;
+}
+
+export interface DependencyGraphEdge {
+  id: string;
+  source: string;
+  target: string;
+  relationship_type: string;
+  source_evidence?: string | null;
+  page_number?: number | null;
+  document_filename?: string | null;
+}
+
+export interface DependencyGraphResponse {
+  nodes: DependencyGraphNode[];
+  edges: DependencyGraphEdge[];
+  has_cycle: boolean;
+  cycles: string[][];
+  missing_prerequisites: string[];
+}
+
+export interface OwnerResponsibilityItem {
+  owner_name: string;
+  is_registered_member: boolean;
+  role?: string | null;
+  total_assigned: number;
+  completed_count: number;
+  in_progress_count: number;
+  blocked_count: number;
+  pending_count: number;
+  tasks: Array<{
+    id: string;
+    title: string;
+    description: string;
+    task_status: string;
+    deadline?: string | null;
+    page_number?: number | null;
+  }>;
+}
+
+export interface ResponsibilitiesResponse {
+  owners: OwnerResponsibilityItem[];
+  unassigned_tasks: Array<{
+    id: string;
+    title: string;
+    description: string;
+    task_status: string;
+    deadline?: string | null;
+    supporting_quotation?: string | null;
+    page_number?: number | null;
+  }>;
+  unassigned_count: number;
+  total_tasks: number;
+}
+
+export interface RiskRegisterItem {
+  id: string;
+  title: string;
+  description: string;
+  category: string;
+  severity: string;
+  likelihood: string;
+  mitigation?: string | null;
+  related_tasks: string[];
+  supporting_quotation?: string | null;
+  page_number?: number | null;
+  document_filename?: string | null;
+  verification_status: VerificationStatus;
+}
+
+export interface RiskRegisterResponse {
+  source_risks: RiskRegisterItem[];
+  blockers: RiskRegisterItem[];
+  ai_recommendations: RiskRegisterItem[];
+  total_risks: number;
+  critical_count: number;
+}
+
+export interface KnowledgeSearchItem {
+  id: string;
+  title: string;
+  description: string;
+  entity_type: EntityType;
+  owner?: string | null;
+  status?: string | null;
+  source_document?: string | null;
+  page_number?: number | null;
+  supporting_quotation?: string | null;
+  verification_status: VerificationStatus;
+  confidence_score: number;
+  match_snippet?: string | null;
+}
+
+export interface KnowledgeSearchResponse {
+  query: string;
+  total_results: number;
+  results: KnowledgeSearchItem[];
+}
+
 export interface ReviewLog {
   id: string;
   finding_id: string;

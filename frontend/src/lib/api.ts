@@ -11,6 +11,13 @@ import {
   KnowledgeConflict,
   FindingEvidenceDetail,
   ProjectKnowledgeSummary,
+  ProjectStateResponse,
+  DecisionTimelineResponse,
+  TaskTimelineResponse,
+  DependencyGraphResponse,
+  ResponsibilitiesResponse,
+  RiskRegisterResponse,
+  KnowledgeSearchResponse,
   ReviewLog,
   HandoverDossier,
   DashboardStats,
@@ -385,6 +392,56 @@ export const api = {
 
   async getFindingEvidence(findingId: string): Promise<FindingEvidenceDetail> {
     return request<FindingEvidenceDetail>(`/knowledge/${findingId}/evidence`);
+  },
+
+  // Phase 5 Project Knowledge Reconstruction & Intelligence APIs
+  async getProjectState(projectId: string): Promise<ProjectStateResponse> {
+    return request<ProjectStateResponse>(`/projects/${projectId}/state`);
+  },
+
+  async reconstructProject(projectId: string, force: boolean = false): Promise<ProjectStateResponse> {
+    return request<ProjectStateResponse>(`/projects/${projectId}/knowledge/reconstruct`, {
+      method: "POST",
+      body: JSON.stringify({ force }),
+    });
+  },
+
+  async getDecisionTimeline(projectId: string, search?: string): Promise<DecisionTimelineResponse> {
+    const q = search ? `?search=${encodeURIComponent(search)}` : "";
+    return request<DecisionTimelineResponse>(`/projects/${projectId}/timeline${q}`);
+  },
+
+  async getTaskTimeline(
+    projectId: string,
+    filters?: { status?: string; owner?: string }
+  ): Promise<TaskTimelineResponse> {
+    const params = new URLSearchParams();
+    if (filters?.status) params.append("status", filters.status);
+    if (filters?.owner) params.append("owner", filters.owner);
+    const q = params.toString() ? `?${params.toString()}` : "";
+    return request<TaskTimelineResponse>(`/projects/${projectId}/tasks/timeline${q}`);
+  },
+
+  async getDependencyGraph(projectId: string): Promise<DependencyGraphResponse> {
+    return request<DependencyGraphResponse>(`/projects/${projectId}/dependencies/graph`);
+  },
+
+  async getResponsibilities(projectId: string): Promise<ResponsibilitiesResponse> {
+    return request<ResponsibilitiesResponse>(`/projects/${projectId}/responsibilities`);
+  },
+
+  async getRiskRegister(projectId: string): Promise<RiskRegisterResponse> {
+    return request<RiskRegisterResponse>(`/projects/${projectId}/risk-register`);
+  },
+
+  async searchKnowledge(
+    projectId: string,
+    query: string,
+    entity_type?: string
+  ): Promise<KnowledgeSearchResponse> {
+    const params = new URLSearchParams({ q: query });
+    if (entity_type && entity_type !== "ALL") params.append("entity_type", entity_type);
+    return request<KnowledgeSearchResponse>(`/projects/${projectId}/knowledge/search?${params.toString()}`);
   },
 
   // Review

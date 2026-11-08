@@ -112,6 +112,8 @@ class Project(Base):
     target_handover_date = Column(DateTime, nullable=True)
     handover_role = Column(String(100), default="Lead Full-Stack Engineer")
     created_by = Column(String(36), ForeignKey("users.id"), nullable=False)
+    last_reconstructed_at = Column(DateTime, nullable=True)
+    reconstruction_version = Column(Integer, default=1)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -122,6 +124,7 @@ class Project(Base):
     findings = relationship("ExtractedFinding", back_populates="project", cascade="all, delete-orphan")
     extraction_jobs = relationship("ExtractionJob", back_populates="project", cascade="all, delete-orphan")
     conflicts = relationship("KnowledgeConflict", back_populates="project", cascade="all, delete-orphan")
+    reconstructions = relationship("ProjectReconstruction", back_populates="project", cascade="all, delete-orphan")
     handovers = relationship("Handover", back_populates="project", cascade="all, delete-orphan")
     audit_logs = relationship("AuditLog", back_populates="project", cascade="all, delete-orphan")
 
@@ -364,3 +367,22 @@ class KnowledgeConflict(Base):
     project = relationship("Project", back_populates="conflicts")
     finding_1 = relationship("ExtractedFinding", foreign_keys=[finding_id_1])
     finding_2 = relationship("ExtractedFinding", foreign_keys=[finding_id_2])
+
+class ProjectReconstruction(Base):
+    __tablename__ = "project_reconstructions"
+
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    project_id = Column(String(36), ForeignKey("projects.id"), nullable=False, index=True)
+    version = Column(Integer, default=1, nullable=False)
+    extraction_job_id = Column(String(36), ForeignKey("extraction_jobs.id"), nullable=True)
+    overview_json = Column(JSON, nullable=False)
+    dependency_graph_json = Column(JSON, nullable=True)
+    risk_register_json = Column(JSON, nullable=True)
+    responsibilities_json = Column(JSON, nullable=True)
+    freshness_status = Column(String(50), default="UP_TO_DATE", index=True)  # UP_TO_DATE, STALE, RECONSTRUCTING
+    reconstructed_by = Column(String(36), ForeignKey("users.id"), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    # Relationships
+    project = relationship("Project", back_populates="reconstructions")
+    creator = relationship("User", foreign_keys=[reconstructed_by])

@@ -502,3 +502,182 @@ class AuditLogResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+# --- Phase 5 Project Knowledge Reconstruction Schemas ---
+
+class ProjectOverviewState(BaseModel):
+    total_tasks: int
+    completed_tasks: int
+    in_progress_tasks: int
+    blocked_tasks: int
+    not_started_tasks: int
+    unknown_status_tasks: int
+    completion_rate: float
+    total_decisions: int
+    open_risks: int
+    unresolved_questions: int
+    total_dependencies: int
+
+class ProjectOwnershipState(BaseModel):
+    assigned_tasks_count: int
+    unassigned_tasks_count: int
+    distinct_owners_count: int
+    ambiguous_owners_count: int
+    ownership_conflicts_count: int
+
+class ProjectUncertaintyState(BaseModel):
+    missing_deadlines_count: int
+    unknown_ownership_count: int
+    conflicting_statuses_count: int
+    unsupported_claims_count: int
+
+class ProjectStateResponse(BaseModel):
+    project_id: str
+    project_name: str
+    project_description: Optional[str] = None
+    project_status: str
+    last_reconstructed_at: Optional[datetime] = None
+    version: int
+    freshness_status: str
+    overview: ProjectOverviewState
+    ownership_state: ProjectOwnershipState
+    uncertainty_state: ProjectUncertaintyState
+    active_blockers_summary: List[Dict[str, Any]] = []
+    recent_decisions_summary: List[Dict[str, Any]] = []
+
+class DecisionTimelineEvent(BaseModel):
+    id: str
+    project_id: str
+    title: str
+    description: str
+    decision_date: Optional[str] = None
+    normalized_date: Optional[str] = None
+    has_date: bool = False
+    decided_by: Optional[str] = None
+    source_document: Optional[str] = None
+    document_id: Optional[str] = None
+    supporting_quotation: Optional[str] = None
+    page_number: Optional[int] = 1
+    verification_status: str = "VERIFIED"
+    confidence_score: float = 1.0
+    flags: Dict[str, Any] = {}
+    created_at: Optional[datetime] = None
+
+class DecisionTimelineResponse(BaseModel):
+    dated_events: List[DecisionTimelineEvent] = []
+    undated_events: List[DecisionTimelineEvent] = []
+    total_decisions: int = 0
+
+class TaskTimelineItem(BaseModel):
+    id: str
+    title: str
+    description: str
+    owner: Optional[str] = None
+    has_owner: bool = False
+    deadline: Optional[str] = None
+    normalized_deadline: Optional[str] = None
+    has_deadline: bool = False
+    start_date: Optional[str] = None
+    task_status: str = "UNKNOWN"
+    priority: Optional[str] = "MEDIUM"
+    is_overdue: bool = False
+    dependencies: List[str] = []
+    supporting_quotation: Optional[str] = None
+    page_number: Optional[int] = 1
+    document_filename: Optional[str] = None
+    verification_status: str = "VERIFIED"
+
+class TaskTimelineResponse(BaseModel):
+    tasks: List[TaskTimelineItem] = []
+    total_tasks: int = 0
+    completed_count: int = 0
+    in_progress_count: int = 0
+    blocked_count: int = 0
+    overdue_count: int = 0
+    unassigned_count: int = 0
+
+class DependencyGraphNode(BaseModel):
+    id: str
+    label: str
+    entity_type: str
+    status: Optional[str] = None
+    owner: Optional[str] = None
+    supporting_quotation: Optional[str] = None
+    page_number: Optional[int] = 1
+    document_filename: Optional[str] = None
+
+class DependencyGraphEdge(BaseModel):
+    id: str
+    source: str
+    target: str
+    relationship_type: str  # DEPENDS_ON, BLOCKS, PREREQUISITE_FOR
+    source_evidence: Optional[str] = None
+    page_number: Optional[int] = 1
+    document_filename: Optional[str] = None
+
+class DependencyGraphResponse(BaseModel):
+    nodes: List[DependencyGraphNode] = []
+    edges: List[DependencyGraphEdge] = []
+    has_cycle: bool = False
+    cycles: List[List[str]] = []
+    missing_prerequisites: List[str] = []
+
+class OwnerResponsibilityItem(BaseModel):
+    owner_name: str
+    is_registered_member: bool = False
+    role: Optional[str] = None
+    total_assigned: int = 0
+    completed_count: int = 0
+    in_progress_count: int = 0
+    blocked_count: int = 0
+    pending_count: int = 0
+    tasks: List[Dict[str, Any]] = []
+
+class ResponsibilitiesResponse(BaseModel):
+    owners: List[OwnerResponsibilityItem] = []
+    unassigned_tasks: List[Dict[str, Any]] = []
+    unassigned_count: int = 0
+    total_tasks: int = 0
+
+class RiskRegisterItem(BaseModel):
+    id: str
+    title: str
+    description: str
+    category: str  # SOURCE_IDENTIFIED, AI_RECOMMENDATION, HUMAN_ADDED
+    severity: str  # CRITICAL, HIGH, MEDIUM, LOW, UNKNOWN
+    likelihood: str  # HIGH, MEDIUM, LOW, UNKNOWN
+    mitigation: Optional[str] = None
+    related_tasks: List[str] = []
+    supporting_quotation: Optional[str] = None
+    page_number: Optional[int] = 1
+    document_filename: Optional[str] = None
+    verification_status: str = "VERIFIED"
+
+class RiskRegisterResponse(BaseModel):
+    source_risks: List[RiskRegisterItem] = []
+    blockers: List[RiskRegisterItem] = []
+    ai_recommendations: List[RiskRegisterItem] = []
+    total_risks: int = 0
+    critical_count: int = 0
+
+class KnowledgeSearchItem(BaseModel):
+    id: str
+    title: str
+    description: str
+    entity_type: str
+    owner: Optional[str] = None
+    status: Optional[str] = None
+    source_document: Optional[str] = None
+    page_number: Optional[int] = 1
+    supporting_quotation: Optional[str] = None
+    verification_status: str = "VERIFIED"
+    confidence_score: float = 1.0
+    match_snippet: Optional[str] = None
+
+class KnowledgeSearchResponse(BaseModel):
+    query: str
+    total_results: int = 0
+    results: List[KnowledgeSearchItem] = []
+
+class ReconstructProjectRequest(BaseModel):
+    force: Optional[bool] = False
