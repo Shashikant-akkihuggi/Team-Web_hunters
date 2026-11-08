@@ -1,0 +1,20 @@
+SPRINT 24 POST-MORTEM & RISK LOG
+Project: Apollo Ingestion Engine
+Date: March 2026
+
+1. CRITICAL BLOCKERS:
+- Blocker: Database connection pool exhaustion under load testing is blocking QA sign-off.
+- Blocker: Blocked by security team review for external data egress compliance.
+- Owner is Sarah Jenkins for database pool tuning.
+
+2. CONFLICTING DEADLINES FOR INVESTIGATION:
+- Deadline: The test suite must be merged before May 30, 2026. (Note: conflicts with May 20 deadline in handover doc)
+- Target delivery deadline for SOC2 audit submission is June 15, 2026.
+
+3. RESILIENCE RISKS:
+- Risk: Memory leak identified in websocket subscriber thread pool during sustained client disconnects.
+- Risk: Single point of failure in background Redis worker node without Sentinel replication.
+
+4. NEXT ACTIONS:
+- Action item: Refactor connection pool max overflow parameter from 10 to 50 in database.py.
+- Action item: Incoming engineer should pair with Liam Vance on Redis Sentinel failover testing.

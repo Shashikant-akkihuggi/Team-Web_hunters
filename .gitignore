@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+backend/venv/
+backend/uploads/
+*.db
+*.sqlite3
+
+# Node / Next.js
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+
+# Environment
+.env
+*.local
+
+# Logs
+*.log
+uvicorn*.log
