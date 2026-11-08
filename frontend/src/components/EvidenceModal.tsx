@@ -13,9 +13,10 @@ export function EvidenceModal({ finding, onClose }: EvidenceModalProps) {
   if (!finding) return null;
 
   const isVerified = finding.verification_status === "VERIFIED";
-  const isConflicting = finding.verification_status === "CONFLICTING";
+  const isConflicting = finding.verification_status === "CONFLICTING" || finding.verification_status === "CONFLICTED";
   const isUnsupported = finding.verification_status === "UNSUPPORTED";
   const flags = finding.flags || {};
+  const firstRef = finding.evidence_refs && finding.evidence_refs.length > 0 ? finding.evidence_refs[0] : null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4 animate-in fade-in duration-200">
@@ -135,6 +136,24 @@ export function EvidenceModal({ finding, onClose }: EvidenceModalProps) {
                 <span className="font-semibold text-slate-700">Review Status:</span>{" "}
                 <span className="font-medium text-slate-900">{finding.status}</span>
               </div>
+              {finding.task_status && (
+                <div>
+                  <span className="font-semibold text-slate-700">Task Status:</span>{" "}
+                  <span className="font-bold text-teal-700">{finding.task_status}</span>
+                </div>
+              )}
+              {finding.priority && (
+                <div>
+                  <span className="font-semibold text-slate-700">Priority:</span>{" "}
+                  <span className="font-bold text-slate-800">{finding.priority}</span>
+                </div>
+              )}
+              {firstRef && (
+                <div>
+                  <span className="font-semibold text-slate-700">Evidence Match Score:</span>{" "}
+                  <span className="font-medium text-emerald-700">{Math.round(firstRef.match_score * 100)}%</span>
+                </div>
+              )}
             </div>
           </div>
         </div>

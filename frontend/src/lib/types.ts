@@ -113,7 +113,9 @@ export type EntityType =
 
 export type FindingStatus = "DRAFT" | "VERIFIED" | "FLAGGED" | "APPROVED" | "REJECTED" | "UNDER_INVESTIGATION";
 
-export type VerificationStatus = "VERIFIED" | "UNSUPPORTED" | "CONFLICTING" | "AMBIGUOUS";
+export type VerificationStatus = "VERIFIED" | "UNSUPPORTED" | "CONFLICTING" | "CONFLICTED" | "NEEDS_REVIEW" | "AMBIGUOUS";
+
+export type TaskStatus = "NOT_STARTED" | "IN_PROGRESS" | "BLOCKED" | "COMPLETED" | "UNKNOWN";
 
 export interface FindingFlags {
   has_conflict?: boolean;
@@ -141,11 +143,20 @@ export interface ExtractedFinding {
   id: string;
   project_id: string;
   document_id: string | null;
+  chunk_id?: string | null;
   entity_type: EntityType;
   title: string;
   description: string;
   owner: string | null;
   deadline: string | null;
+  task_status?: TaskStatus | null;
+  priority?: "CRITICAL" | "HIGH" | "MEDIUM" | "LOW" | null;
+  decided_by?: string | null;
+  decision_date?: string | null;
+  impact?: string | null;
+  likelihood?: string | null;
+  mitigation?: string | null;
+  related_entity?: string | null;
   status: FindingStatus;
   page_number: number | null;
   supporting_quotation: string | null;
@@ -157,6 +168,71 @@ export interface ExtractedFinding {
   evidence_refs?: EvidenceReference[];
   created_at: string;
   updated_at: string;
+}
+
+export interface ExtractionJob {
+  id: string;
+  project_id: string;
+  status: "QUEUED" | "PROCESSING" | "COMPLETED" | "PARTIALLY_COMPLETED" | "FAILED";
+  processed_documents_count: number;
+  processed_chunks_count: number;
+  extracted_findings_count: number;
+  conflicts_count: number;
+  unsupported_count: number;
+  error_message?: string | null;
+  created_by?: string | null;
+  created_at: string;
+  updated_at: string;
+  completed_at?: string | null;
+}
+
+export interface KnowledgeConflict {
+  id: string;
+  project_id: string;
+  finding_id_1?: string | null;
+  finding_id_2?: string | null;
+  conflict_type: "STATUS" | "DEADLINE" | "OWNERSHIP" | "CONTRADICTION";
+  description: string;
+  source_1_quote?: string | null;
+  source_1_page?: number | null;
+  source_1_doc_id?: string | null;
+  source_1_doc_filename?: string | null;
+  source_2_quote?: string | null;
+  source_2_page?: number | null;
+  source_2_doc_id?: string | null;
+  source_2_doc_filename?: string | null;
+  status: "OPEN" | "RESOLVED" | "IGNORED";
+  created_at: string;
+}
+
+export interface FindingEvidenceDetail {
+  finding_id: string;
+  finding_title: string;
+  entity_type: EntityType;
+  verification_status: VerificationStatus;
+  document_id?: string | null;
+  document_filename?: string | null;
+  page_number?: number | null;
+  chunk_id?: string | null;
+  chunk_text?: string | null;
+  supporting_quotation?: string | null;
+  match_score: number;
+  is_verified: boolean;
+  verified_at?: string | null;
+  flags: FindingFlags;
+}
+
+export interface ProjectKnowledgeSummary {
+  total_findings: number;
+  decisions_count: number;
+  tasks_count: number;
+  risks_count: number;
+  blockers_count: number;
+  dependencies_count: number;
+  questions_count: number;
+  conflicts_count: number;
+  unsupported_count: number;
+  verified_percentage: number;
 }
 
 export interface ReviewLog {

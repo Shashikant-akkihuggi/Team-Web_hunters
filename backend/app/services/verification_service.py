@@ -1,13 +1,26 @@
+import logging
 import re
-from typing import List, Dict, Any, Tuple
+from typing import List, Dict, Any, Tuple, Optional
 from sqlalchemy.orm import Session
 from difflib import SequenceMatcher
 
-from backend.app.models import ExtractedFinding, DocumentChunk, EvidenceReference, VerificationStatus
+from backend.app.models import (
+    ExtractedFinding, DocumentChunk, EvidenceReference,
+    VerificationStatus, KnowledgeConflict, ConflictType, ConflictStatus
+)
+
+logger = logging.getLogger(__name__)
 
 def normalize_text(text: str) -> str:
     """Normalize text by collapsing whitespace and lowercasing."""
+    if not text:
+        return ""
     return re.sub(r'\s+', ' ', text).strip().lower()
+
+def extract_core_topic(title: str) -> str:
+    """Extracts base topic words stripping prefix labels like 'Task:', 'Decision:', 'Blocked Task:'."""
+    clean = re.sub(r'^(?:task|decision|risk|blocker|dependency|question|milestone|blocked task):\s*', '', title, flags=re.IGNORECASE)
+    return clean.strip().lower()
 
 def calculate_match_score(quotation: str, chunk_text: str) -> float:
     """
@@ -25,36 +38,46 @@ def calculate_match_score(quotation: str, chunk_text: str) -> float:
         return 1.0
 
     # 2. Token overlap ratio
-    quote_tokens = set(norm_quote.split())
-    chunk_tokens = set(norm_chunk.split())
+    quote_tokens = [w for w in norm_quote.split() if len(w) > 1]
     if not quote_tokens:
         return 0.0
-    overlap = len(quote_tokens.intersection(chunk_tokens)) / len(quote_tokens)
+    chunk_tokens = set(norm_chunk.split())
+    overlap = sum(1 for w in quote_tokens if w in chunk_tokens) / len(quote_tokens)
 
-    # 3. SequenceMatcher for approximate fuzzy alignment
-    if len(norm_quote) < 300:
-        seq_ratio = SequenceMatcher(None, norm_quote, norm_chunk).quick_ratio()
-        return max(overlap * 0.9, seq_ratio)
+    # 3. If token overlap is high (>= 0.70), compute sequence similarity against sentences
+    if overlap >= 0.70:
+        sentences = [normalize_text(s) for s in re.split(r'(?<=[.!?])\s+', norm_chunk)]
+        best_sent_ratio = max((SequenceMatcher(None, norm_quote, s).ratio() for s in sentences), default=0.0)
+        return max(overlap, best_sent_ratio)
 
     return overlap
 
 def verify_single_finding(
     finding: ExtractedFinding,
     chunks: List[DocumentChunk]
-) -> Tuple[bool, float, int]:
+) -> Tuple[bool, float, int, Optional[str]]:
     """
     Verifies that the finding's supporting_quotation exists in one of the document chunks.
-    Prioritizes the designated page_number.
-    Returns (is_verified, best_score, verified_page).
+    Prioritizes the designated chunk_id and page_number.
+    Returns (is_verified, best_score, verified_page, verified_chunk_id).
     """
     quote = finding.supporting_quotation
     if not quote or len(quote.strip()) < 10:
-        return False, 0.0, finding.page_number or 1
+        return False, 0.0, finding.page_number or 1, finding.chunk_id
 
     best_score = 0.0
     best_page = finding.page_number or 1
+    best_chunk_id = finding.chunk_id
 
-    # First check chunks matching the claimed page number
+    # 1. First priority: Check exact chunk_id if specified
+    if finding.chunk_id:
+        direct_chunk = next((c for c in chunks if c.id == finding.chunk_id), None)
+        if direct_chunk:
+            score = calculate_match_score(quote, direct_chunk.text_content)
+            if score >= 0.70:
+                return True, round(score, 2), direct_chunk.page_number, direct_chunk.id
+
+    # 2. Second priority: Check chunks matching page_number
     target_chunks = [c for c in chunks if c.page_number == finding.page_number]
     other_chunks = [c for c in chunks if c.page_number != finding.page_number]
 
@@ -63,26 +86,39 @@ def verify_single_finding(
         if score > best_score:
             best_score = score
             best_page = chunk.page_number
+            best_chunk_id = chunk.id
             if best_score >= 0.99:
                 break
 
-    # If not found on claimed page, inspect other pages
-    if best_score < 0.8:
+    # 3. Third priority: Inspect other pages
+    if best_score < 0.70:
         for chunk in other_chunks:
             score = calculate_match_score(quote, chunk.text_content)
             if score > best_score:
                 best_score = score
                 best_page = chunk.page_number
+                best_chunk_id = chunk.id
                 if best_score >= 0.99:
                     break
 
     is_verified = (best_score >= 0.70)
-    return is_verified, round(best_score, 2), best_page
+    return is_verified, round(best_score, 2), best_page, best_chunk_id
 
-def run_project_verification(project_id: str, db: Session):
+def are_topics_conflicting(t1: str, t2: str) -> bool:
+    """Checks if two titles / topics refer to the same project entity."""
+    c1 = extract_core_topic(t1)
+    c2 = extract_core_topic(t2)
+    if c1 in c2 or c2 in c1:
+        return True
+    sim = SequenceMatcher(None, c1, c2).ratio()
+    return sim > 0.60
+
+def run_project_verification(project_id: str, db: Session) -> Dict[str, int]:
     """
-    Runs evidence verification across all findings in a project.
-    Generates EvidenceReference records, detects conflicting dates/owners, and flags anomalies.
+    Runs comprehensive evidence verification, contradiction detection, and deduplication
+    across all findings in a project.
+    Generates EvidenceReference and KnowledgeConflict records.
+    Returns summary statistics.
     """
     findings = db.query(ExtractedFinding).filter(ExtractedFinding.project_id == project_id).all()
     chunks = db.query(DocumentChunk).filter(DocumentChunk.project_id == project_id).all()
@@ -92,10 +128,17 @@ def run_project_verification(project_id: str, db: Session):
     for c in chunks:
         chunks_by_doc.setdefault(c.document_id, []).append(c)
 
+    verified_count = 0
+    unsupported_count = 0
+    conflicts_detected = 0
+
     # 1. Evidence Citation Verification
     for f in findings:
         doc_chunks = chunks_by_doc.get(f.document_id, [])
-        is_verified, score, verified_page = verify_single_finding(f, doc_chunks)
+        is_verified, score, verified_page, verified_chunk_id = verify_single_finding(f, doc_chunks)
+
+        if verified_chunk_id and not f.chunk_id:
+            f.chunk_id = verified_chunk_id
 
         # Update or create EvidenceReference
         existing_ref = db.query(EvidenceReference).filter(EvidenceReference.finding_id == f.id).first()
@@ -120,10 +163,12 @@ def run_project_verification(project_id: str, db: Session):
             flags["missing_evidence"] = True
             flags["evidence_strength"] = "NONE" if score == 0.0 else "WEAK"
             f.verification_status = VerificationStatus.UNSUPPORTED
+            unsupported_count += 1
         else:
             flags["missing_evidence"] = False
             flags["evidence_strength"] = "STRONG"
             f.verification_status = VerificationStatus.VERIFIED
+            verified_count += 1
 
         # Check ambiguous ownership
         if f.owner and (" or " in f.owner.lower() or "unclear" in f.owner.lower() or "tbd" in f.owner.lower()):
@@ -133,35 +178,85 @@ def run_project_verification(project_id: str, db: Session):
 
         f.flags = flags
 
-    # 2. Cross-Finding Conflict Detection
-    # Detect contradictory deadlines or owners for similar topics
+    # 2. Contradiction Detection Engine
+    # Clear existing conflicts for clean re-computation
+    db.query(KnowledgeConflict).filter(KnowledgeConflict.project_id == project_id).delete()
+
     for i, f1 in enumerate(findings):
         for f2 in findings[i+1:]:
-            # Compare similarity of titles/descriptions
-            title_sim = SequenceMatcher(None, normalize_text(f1.title), normalize_text(f2.title)).ratio()
-            if title_sim > 0.65 or (f1.entity_type == f2.entity_type and f1.entity_type in ["DEADLINE", "TASK", "MILESTONE"]):
-                # Check deadline conflict
-                if f1.deadline and f2.deadline and f1.deadline.strip().lower() != f2.deadline.strip().lower():
-                    flags1 = f1.flags or {}
-                    flags2 = f2.flags or {}
-                    flags1["has_conflict"] = True
-                    flags1["conflict_reason"] = f"Contradictory deadline '{f1.deadline}' vs '{f2.deadline}' in finding '{f2.title[:40]}'"
-                    flags2["has_conflict"] = True
-                    flags2["conflict_reason"] = f"Contradictory deadline '{f2.deadline}' vs '{f1.deadline}' in finding '{f1.title[:40]}'"
-                    f1.flags = flags1
-                    f2.flags = flags2
-                    f1.verification_status = VerificationStatus.CONFLICTING
-                    f2.verification_status = VerificationStatus.CONFLICTING
+            same_entity_family = (f1.entity_type == f2.entity_type) or (
+                f1.entity_type in ["TASK", "BLOCKER"] and f2.entity_type in ["TASK", "BLOCKER"]
+            )
+            if not same_entity_family:
+                continue
 
-                # Check owner conflict for the same task
-                if f1.entity_type == "TASK" and f1.owner and f2.owner and f1.owner.strip().lower() != f2.owner.strip().lower() and title_sim > 0.65:
-                    flags1 = f1.flags or {}
-                    flags2 = f2.flags or {}
-                    flags1["ambiguous_ownership"] = True
-                    flags1["ownership_conflict"] = f"Contradicting owner '{f1.owner}' vs '{f2.owner}'"
-                    flags2["ambiguous_ownership"] = True
-                    flags2["ownership_conflict"] = f"Contradicting owner '{f2.owner}' vs '{f1.owner}'"
-                    f1.flags = flags1
-                    f2.flags = flags2
+            topic_match = are_topics_conflicting(f1.title, f2.title) or are_topics_conflicting(f1.description, f2.description)
+            if not topic_match:
+                continue
+
+            conflict_type = None
+            conflict_desc = None
+
+            # A. Task Status Contradiction
+            # e.g., COMPLETED vs BLOCKED, or IN_PROGRESS vs BLOCKED, or COMPLETED vs IN_PROGRESS
+            s1 = (f1.task_status or f1.status or "").upper()
+            s2 = (f2.task_status or f2.status or "").upper()
+            if s1 and s2 and s1 != s2:
+                # Contradicting statuses
+                if {"COMPLETED", "BLOCKED"}.issubset({s1, s2}) or \
+                   {"IN_PROGRESS", "BLOCKED"}.issubset({s1, s2}) or \
+                   {"COMPLETED", "IN_PROGRESS"}.issubset({s1, s2}) or \
+                   {"COMPLETED", "NOT_STARTED"}.issubset({s1, s2}):
+                    conflict_type = ConflictType.STATUS
+                    conflict_desc = f"Conflicting status for '{f1.title}': '{s1}' vs '{s2}' across documents."
+
+            # B. Deadline Contradiction
+            if not conflict_type and f1.deadline and f2.deadline and f1.deadline.strip().lower() != f2.deadline.strip().lower():
+                conflict_type = ConflictType.DEADLINE
+                conflict_desc = f"Contradictory delivery deadline for '{f1.title}': '{f1.deadline}' vs '{f2.deadline}'."
+
+            # C. Ownership Contradiction
+            if not conflict_type and f1.owner and f2.owner and f1.owner.strip().lower() != f2.owner.strip().lower():
+                conflict_type = ConflictType.OWNERSHIP
+                conflict_desc = f"Contradicting assigned owner for '{f1.title}': '{f1.owner}' vs '{f2.owner}'."
+
+            if conflict_type and conflict_desc:
+                conflicts_detected += 1
+                # Mark both findings as CONFLICTED
+                f1.verification_status = VerificationStatus.CONFLICTED
+                f2.verification_status = VerificationStatus.CONFLICTED
+
+                flags1 = f1.flags or {}
+                flags2 = f2.flags or {}
+                flags1["has_conflict"] = True
+                flags1["conflict_reason"] = conflict_desc
+                flags2["has_conflict"] = True
+                flags2["conflict_reason"] = conflict_desc
+                f1.flags = flags1
+                f2.flags = flags2
+
+                # Create persistent KnowledgeConflict record
+                conflict_record = KnowledgeConflict(
+                    project_id=project_id,
+                    finding_id_1=f1.id,
+                    finding_id_2=f2.id,
+                    conflict_type=conflict_type,
+                    description=conflict_desc,
+                    source_1_quote=f1.supporting_quotation,
+                    source_1_page=f1.page_number,
+                    source_1_doc_id=f1.document_id,
+                    source_2_quote=f2.supporting_quotation,
+                    source_2_page=f2.page_number,
+                    source_2_doc_id=f2.document_id,
+                    status=ConflictStatus.OPEN
+                )
+                db.add(conflict_record)
 
     db.commit()
+
+    return {
+        "total_findings": len(findings),
+        "verified_count": verified_count,
+        "unsupported_count": unsupported_count,
+        "conflicts_count": conflicts_detected
+    }

@@ -230,6 +230,14 @@ class FindingBase(BaseModel):
     description: str
     owner: Optional[str] = None
     deadline: Optional[str] = None
+    task_status: Optional[str] = None
+    priority: Optional[str] = None
+    decided_by: Optional[str] = None
+    decision_date: Optional[str] = None
+    impact: Optional[str] = None
+    likelihood: Optional[str] = None
+    mitigation: Optional[str] = None
+    related_entity: Optional[str] = None
     status: Optional[str] = "DRAFT"
     page_number: Optional[int] = None
     supporting_quotation: Optional[str] = None
@@ -240,12 +248,21 @@ class FindingBase(BaseModel):
 class FindingCreate(FindingBase):
     project_id: str
     document_id: Optional[str] = None
+    chunk_id: Optional[str] = None
 
 class FindingUpdate(BaseModel):
     title: Optional[str] = None
     description: Optional[str] = None
     owner: Optional[str] = None
     deadline: Optional[str] = None
+    task_status: Optional[str] = None
+    priority: Optional[str] = None
+    decided_by: Optional[str] = None
+    decision_date: Optional[str] = None
+    impact: Optional[str] = None
+    likelihood: Optional[str] = None
+    mitigation: Optional[str] = None
+    related_entity: Optional[str] = None
     status: Optional[str] = None
     verification_status: Optional[str] = None
     is_recommendation: Optional[bool] = None
@@ -255,6 +272,7 @@ class FindingResponse(FindingBase):
     id: str
     project_id: str
     document_id: Optional[str] = None
+    chunk_id: Optional[str] = None
     verification_status: str
     document_filename: Optional[str] = None
     evidence_refs: List[EvidenceReferenceResponse] = []
@@ -263,6 +281,99 @@ class FindingResponse(FindingBase):
 
     class Config:
         from_attributes = True
+
+# --- Phase 4 AI Extraction & Intelligence Schemas ---
+class ExtractedEntityItem(BaseModel):
+    entity_type: str = Field(..., description="DECISION, TASK, RISK, BLOCKER, DEPENDENCY, QUESTION, MILESTONE, RESPONSIBILITY, CONTACT")
+    title: str = Field(..., max_length=255)
+    description: str
+    owner: Optional[str] = None
+    deadline: Optional[str] = None
+    task_status: Optional[str] = None  # NOT_STARTED, IN_PROGRESS, BLOCKED, COMPLETED, UNKNOWN
+    priority: Optional[str] = None      # CRITICAL, HIGH, MEDIUM, LOW
+    decided_by: Optional[str] = None
+    decision_date: Optional[str] = None
+    impact: Optional[str] = None
+    likelihood: Optional[str] = None
+    mitigation: Optional[str] = None
+    related_entity: Optional[str] = None
+    supporting_quotation: str = Field(..., description="Verbatim quote from the chunk text")
+    confidence_score: float = 0.9
+    is_recommendation: bool = False
+    page_number: int = 1
+
+class ExtractedEntitiesPayload(BaseModel):
+    findings: List[ExtractedEntityItem] = []
+
+class ExtractionJobCreate(BaseModel):
+    force_reprocess: Optional[bool] = False
+
+class ExtractionJobResponse(BaseModel):
+    id: str
+    project_id: str
+    status: str
+    processed_documents_count: int
+    processed_chunks_count: int
+    extracted_findings_count: int
+    conflicts_count: int
+    unsupported_count: int
+    error_message: Optional[str] = None
+    created_by: Optional[str] = None
+    created_at: datetime
+    updated_at: datetime
+    completed_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+class KnowledgeConflictResponse(BaseModel):
+    id: str
+    project_id: str
+    finding_id_1: Optional[str] = None
+    finding_id_2: Optional[str] = None
+    conflict_type: str
+    description: str
+    source_1_quote: Optional[str] = None
+    source_1_page: Optional[int] = None
+    source_1_doc_id: Optional[str] = None
+    source_1_doc_filename: Optional[str] = None
+    source_2_quote: Optional[str] = None
+    source_2_page: Optional[int] = None
+    source_2_doc_id: Optional[str] = None
+    source_2_doc_filename: Optional[str] = None
+    status: str
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+class FindingEvidenceDetailResponse(BaseModel):
+    finding_id: str
+    finding_title: str
+    entity_type: str
+    verification_status: str
+    document_id: Optional[str] = None
+    document_filename: Optional[str] = None
+    page_number: Optional[int] = None
+    chunk_id: Optional[str] = None
+    chunk_text: Optional[str] = None
+    supporting_quotation: Optional[str] = None
+    match_score: float = 1.0
+    is_verified: bool = True
+    verified_at: Optional[datetime] = None
+    flags: Dict[str, Any] = {}
+
+class ProjectKnowledgeSummary(BaseModel):
+    total_findings: int
+    decisions_count: int
+    tasks_count: int
+    risks_count: int
+    blockers_count: int
+    dependencies_count: int
+    questions_count: int
+    conflicts_count: int
+    unsupported_count: int
+    verified_percentage: float
 
 # --- Review Schemas ---
 class ReviewCreate(BaseModel):

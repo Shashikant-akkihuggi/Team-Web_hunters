@@ -39,7 +39,34 @@ class VerificationStatus:
     VERIFIED = "VERIFIED"
     UNSUPPORTED = "UNSUPPORTED"
     CONFLICTING = "CONFLICTING"
+    CONFLICTED = "CONFLICTED"
+    NEEDS_REVIEW = "NEEDS_REVIEW"
     AMBIGUOUS = "AMBIGUOUS"
+
+class TaskStatus:
+    NOT_STARTED = "NOT_STARTED"
+    IN_PROGRESS = "IN_PROGRESS"
+    BLOCKED = "BLOCKED"
+    COMPLETED = "COMPLETED"
+    UNKNOWN = "UNKNOWN"
+
+class ExtractionJobStatus:
+    QUEUED = "QUEUED"
+    PROCESSING = "PROCESSING"
+    COMPLETED = "COMPLETED"
+    PARTIALLY_COMPLETED = "PARTIALLY_COMPLETED"
+    FAILED = "FAILED"
+
+class ConflictType:
+    STATUS = "STATUS"
+    DEADLINE = "DEADLINE"
+    OWNERSHIP = "OWNERSHIP"
+    CONTRADICTION = "CONTRADICTION"
+
+class ConflictStatus:
+    OPEN = "OPEN"
+    RESOLVED = "RESOLVED"
+    IGNORED = "IGNORED"
 
 class ProjectStatus:
     PLANNING = "PLANNING"
@@ -93,6 +120,8 @@ class Project(Base):
     documents = relationship("Document", back_populates="project", cascade="all, delete-orphan")
     document_chunks = relationship("DocumentChunk", back_populates="project", cascade="all, delete-orphan")
     findings = relationship("ExtractedFinding", back_populates="project", cascade="all, delete-orphan")
+    extraction_jobs = relationship("ExtractionJob", back_populates="project", cascade="all, delete-orphan")
+    conflicts = relationship("KnowledgeConflict", back_populates="project", cascade="all, delete-orphan")
     handovers = relationship("Handover", back_populates="project", cascade="all, delete-orphan")
     audit_logs = relationship("AuditLog", back_populates="project", cascade="all, delete-orphan")
 
@@ -194,11 +223,20 @@ class ExtractedFinding(Base):
     id = Column(String(36), primary_key=True, default=generate_uuid)
     project_id = Column(String(36), ForeignKey("projects.id"), nullable=False, index=True)
     document_id = Column(String(36), ForeignKey("documents.id"), nullable=True, index=True)
+    chunk_id = Column(String(36), ForeignKey("document_chunks.id"), nullable=True, index=True)
     entity_type = Column(String(50), nullable=False, index=True)  # DECISION, TASK, RISK, etc.
     title = Column(String(255), nullable=False)
     description = Column(Text, nullable=False)
     owner = Column(String(255), nullable=True)  # Null if not explicitly found
     deadline = Column(String(100), nullable=True)  # Null if not explicitly found
+    task_status = Column(String(50), nullable=True, index=True)  # NOT_STARTED, IN_PROGRESS, BLOCKED, COMPLETED, UNKNOWN
+    priority = Column(String(50), nullable=True)  # CRITICAL, HIGH, MEDIUM, LOW
+    decided_by = Column(String(255), nullable=True)
+    decision_date = Column(String(100), nullable=True)
+    impact = Column(Text, nullable=True)
+    likelihood = Column(String(50), nullable=True)
+    mitigation = Column(Text, nullable=True)
+    related_entity = Column(String(255), nullable=True)
     status = Column(String(50), default=FindingStatus.DRAFT, index=True)
     verification_status = Column(String(50), default=VerificationStatus.UNSUPPORTED, index=True)
     page_number = Column(Integer, nullable=True)
@@ -212,6 +250,7 @@ class ExtractedFinding(Base):
     # Relationships
     project = relationship("Project", back_populates="findings")
     document = relationship("Document", back_populates="findings")
+    chunk = relationship("DocumentChunk")
     evidence_refs = relationship("EvidenceReference", back_populates="finding", cascade="all, delete-orphan")
     reviews = relationship("Review", back_populates="finding", cascade="all, delete-orphan")
 
@@ -281,3 +320,47 @@ class AuditLog(Base):
     # Relationships
     project = relationship("Project", back_populates="audit_logs")
     user = relationship("User", back_populates="audit_logs")
+
+class ExtractionJob(Base):
+    __tablename__ = "extraction_jobs"
+
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    project_id = Column(String(36), ForeignKey("projects.id"), nullable=False, index=True)
+    status = Column(String(50), default=ExtractionJobStatus.QUEUED, index=True)
+    processed_documents_count = Column(Integer, default=0)
+    processed_chunks_count = Column(Integer, default=0)
+    extracted_findings_count = Column(Integer, default=0)
+    conflicts_count = Column(Integer, default=0)
+    unsupported_count = Column(Integer, default=0)
+    error_message = Column(Text, nullable=True)
+    created_by = Column(String(36), ForeignKey("users.id"), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    completed_at = Column(DateTime, nullable=True)
+
+    # Relationships
+    project = relationship("Project", back_populates="extraction_jobs")
+    creator = relationship("User", foreign_keys=[created_by])
+
+class KnowledgeConflict(Base):
+    __tablename__ = "knowledge_conflicts"
+
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    project_id = Column(String(36), ForeignKey("projects.id"), nullable=False, index=True)
+    finding_id_1 = Column(String(36), ForeignKey("extracted_findings.id", ondelete="CASCADE"), nullable=True, index=True)
+    finding_id_2 = Column(String(36), ForeignKey("extracted_findings.id", ondelete="CASCADE"), nullable=True, index=True)
+    conflict_type = Column(String(50), default=ConflictType.STATUS, index=True)
+    description = Column(Text, nullable=False)
+    source_1_quote = Column(Text, nullable=True)
+    source_1_page = Column(Integer, nullable=True)
+    source_1_doc_id = Column(String(36), nullable=True)
+    source_2_quote = Column(Text, nullable=True)
+    source_2_page = Column(Integer, nullable=True)
+    source_2_doc_id = Column(String(36), nullable=True)
+    status = Column(String(50), default=ConflictStatus.OPEN, index=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    # Relationships
+    project = relationship("Project", back_populates="conflicts")
+    finding_1 = relationship("ExtractedFinding", foreign_keys=[finding_id_1])
+    finding_2 = relationship("ExtractedFinding", foreign_keys=[finding_id_2])

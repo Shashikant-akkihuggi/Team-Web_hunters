@@ -7,6 +7,10 @@ import {
   DocumentContent,
   DocumentPage,
   ExtractedFinding,
+  ExtractionJob,
+  KnowledgeConflict,
+  FindingEvidenceDetail,
+  ProjectKnowledgeSummary,
   ReviewLog,
   HandoverDossier,
   DashboardStats,
@@ -304,6 +308,83 @@ export const api = {
     questions: any[];
   }> {
     return request(`/knowledge/${projectId}/risks-dependencies`);
+  },
+
+  // Phase 4 AI Extraction Pipeline & Knowledge Intelligence Hub
+  async triggerExtraction(projectId: string, force_reprocess: boolean = false): Promise<ExtractionJob> {
+    return request<ExtractionJob>(`/projects/${projectId}/extractions`, {
+      method: "POST",
+      body: JSON.stringify({ force_reprocess }),
+    });
+  },
+
+  async listExtractions(projectId: string): Promise<ExtractionJob[]> {
+    return request<ExtractionJob[]>(`/projects/${projectId}/extractions`);
+  },
+
+  async getExtraction(extractionId: string): Promise<ExtractionJob> {
+    return request<ExtractionJob>(`/extractions/${extractionId}`);
+  },
+
+  async getExtractionStatus(extractionId: string): Promise<ExtractionJob> {
+    return request<ExtractionJob>(`/extractions/${extractionId}/status`);
+  },
+
+  async retryExtraction(extractionId: string): Promise<ExtractionJob> {
+    return request<ExtractionJob>(`/extractions/${extractionId}/retry`, {
+      method: "POST",
+    });
+  },
+
+  async getProjectKnowledge(projectId: string): Promise<{
+    summary: ProjectKnowledgeSummary;
+    findings: ExtractedFinding[];
+    conflicts: KnowledgeConflict[];
+  }> {
+    return request(`/projects/${projectId}/knowledge`);
+  },
+
+  async getDecisions(projectId: string, search?: string): Promise<ExtractedFinding[]> {
+    const q = search ? `?search=${encodeURIComponent(search)}` : "";
+    return request<ExtractedFinding[]>(`/projects/${projectId}/decisions${q}`);
+  },
+
+  async getTasks(
+    projectId: string,
+    filters?: { task_status?: string; owner?: string; priority?: string; search?: string }
+  ): Promise<ExtractedFinding[]> {
+    const params = new URLSearchParams();
+    if (filters?.task_status) params.append("task_status", filters.task_status);
+    if (filters?.owner) params.append("owner", filters.owner);
+    if (filters?.priority) params.append("priority", filters.priority);
+    if (filters?.search) params.append("search", filters.search);
+    const q = params.toString() ? `?${params.toString()}` : "";
+    return request<ExtractedFinding[]>(`/projects/${projectId}/tasks${q}`);
+  },
+
+  async getRisks(projectId: string, priority?: string): Promise<ExtractedFinding[]> {
+    const q = priority ? `?priority=${encodeURIComponent(priority)}` : "";
+    return request<ExtractedFinding[]>(`/projects/${projectId}/risks${q}`);
+  },
+
+  async getBlockers(projectId: string): Promise<ExtractedFinding[]> {
+    return request<ExtractedFinding[]>(`/projects/${projectId}/blockers`);
+  },
+
+  async getDependencies(projectId: string): Promise<ExtractedFinding[]> {
+    return request<ExtractedFinding[]>(`/projects/${projectId}/dependencies`);
+  },
+
+  async getQuestions(projectId: string): Promise<ExtractedFinding[]> {
+    return request<ExtractedFinding[]>(`/projects/${projectId}/questions`);
+  },
+
+  async getConflicts(projectId: string): Promise<KnowledgeConflict[]> {
+    return request<KnowledgeConflict[]>(`/projects/${projectId}/conflicts`);
+  },
+
+  async getFindingEvidence(findingId: string): Promise<FindingEvidenceDetail> {
+    return request<FindingEvidenceDetail>(`/knowledge/${findingId}/evidence`);
   },
 
   // Review
