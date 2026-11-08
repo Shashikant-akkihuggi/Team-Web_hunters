@@ -15,6 +15,7 @@ import {
   ChevronDown,
   Sparkles,
   Shield,
+  LogOut,
 } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
 import { UserRole } from "@/lib/types";
@@ -38,7 +39,7 @@ interface SidebarProps {
 }
 
 export function Sidebar({ activeTab, setActiveTab, onNewProject }: SidebarProps) {
-  const { user, currentProject, setCurrentProject, projects, switchDemoRole } = useAuth();
+  const { user, currentProject, setCurrentProject, projects, switchDemoRole, logout } = useAuth();
 
   const isIncomingMember = user?.role === "INCOMING_MEMBER";
 
@@ -181,19 +182,29 @@ export function Sidebar({ activeTab, setActiveTab, onNewProject }: SidebarProps)
           )}
         </div>
 
-        {/* Current User Badge */}
-        <div className="pt-2 flex items-center gap-2 border-t border-slate-850">
-          <div className="w-7 h-7 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center font-bold text-teal-400 text-xs shrink-0">
-            {user?.full_name?.charAt(0) || "U"}
+        {/* Current User Badge & Logout */}
+        <div className="pt-2 flex items-center justify-between gap-2 border-t border-slate-850">
+          <div className="flex items-center gap-2 min-w-0">
+            <div className="w-7 h-7 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center font-bold text-teal-400 text-xs shrink-0">
+              {user?.full_name?.charAt(0) || "U"}
+            </div>
+            <div className="min-w-0 flex-1">
+              <span className="text-xs font-semibold text-white block truncate">
+                {user?.full_name || "User"}
+              </span>
+              <span className="text-[10px] text-teal-400 font-mono block truncate">
+                {user?.role}
+              </span>
+            </div>
           </div>
-          <div className="min-w-0 flex-1">
-            <span className="text-xs font-semibold text-white block truncate">
-              {user?.full_name || "User"}
-            </span>
-            <span className="text-[10px] text-teal-400 font-mono block truncate">
-              {user?.role}
-            </span>
-          </div>
+
+          <button
+            onClick={() => logout()}
+            title="Sign out"
+            className="p-1.5 rounded-lg text-slate-400 hover:text-red-400 hover:bg-slate-850 transition shrink-0"
+          >
+            <LogOut className="w-3.5 h-3.5" />
+          </button>
         </div>
       </div>
     </aside>

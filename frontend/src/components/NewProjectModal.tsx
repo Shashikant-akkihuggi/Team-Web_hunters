@@ -12,9 +12,11 @@ interface NewProjectModalProps {
 export function NewProjectModal({ onClose, onSuccess }: NewProjectModalProps) {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
-  const [domain, setDomain] = useState("Core Platform Infrastructure");
+  const [category, setCategory] = useState("Engineering");
+  const [status, setStatus] = useState("ACTIVE");
   const [targetRole, setTargetRole] = useState("Senior Distributed Systems Engineer");
-  const [targetDate, setTargetDate] = useState("");
+  const [startDate, setStartDate] = useState(new Date().toISOString().split("T")[0]);
+  const [expectedCompletionDate, setExpectedCompletionDate] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -25,11 +27,15 @@ export function NewProjectModal({ onClose, onSuccess }: NewProjectModalProps) {
     setError(null);
     try {
       const proj = await api.createProject({
-        name,
-        description,
-        domain,
+        name: name.trim(),
+        description: description.trim() || undefined,
+        category,
+        domain: category,
+        status,
+        start_date: startDate ? new Date(startDate).toISOString() : undefined,
+        expected_completion_date: expectedCompletionDate ? new Date(expectedCompletionDate).toISOString() : undefined,
         handover_role: targetRole,
-        target_handover_date: targetDate ? new Date(targetDate).toISOString() : undefined,
+        target_handover_date: expectedCompletionDate ? new Date(expectedCompletionDate).toISOString() : undefined,
       });
       onSuccess(proj);
       onClose();
@@ -89,20 +95,51 @@ export function NewProjectModal({ onClose, onSuccess }: NewProjectModalProps) {
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="text-xs font-semibold text-slate-700 block mb-1">Domain</label>
+              <label className="text-xs font-semibold text-slate-700 block mb-1">Category</label>
+              <select
+                value={category}
+                onChange={(e) => setCategory(e.target.value)}
+                className="w-full text-sm border border-slate-300 rounded-lg px-3 py-2 bg-white focus:outline-teal-600"
+              >
+                <option value="Engineering">Engineering</option>
+                <option value="Product">Product</option>
+                <option value="DevOps & Cloud">DevOps & Cloud</option>
+                <option value="Data & AI">Data & AI</option>
+                <option value="Security">Security</option>
+                <option value="Operations">Operations</option>
+              </select>
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-slate-700 block mb-1">Initial Status</label>
+              <select
+                value={status}
+                onChange={(e) => setStatus(e.target.value)}
+                className="w-full text-sm border border-slate-300 rounded-lg px-3 py-2 bg-white focus:outline-teal-600"
+              >
+                <option value="ACTIVE">ACTIVE</option>
+                <option value="PLANNING">PLANNING</option>
+                <option value="ON_HOLD">ON_HOLD</option>
+                <option value="COMPLETED">COMPLETED</option>
+              </select>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs font-semibold text-slate-700 block mb-1">Start Date</label>
               <input
-                type="text"
-                value={domain}
-                onChange={(e) => setDomain(e.target.value)}
-                className="w-full text-sm border border-slate-300 rounded-lg px-3 py-2 focus:outline-teal-600"
+                type="date"
+                value={startDate}
+                onChange={(e) => setStartDate(e.target.value)}
+                className="w-full text-sm border border-slate-300 rounded-lg px-3 py-2 focus:outline-teal-600 text-slate-700"
               />
             </div>
             <div>
-              <label className="text-xs font-semibold text-slate-700 block mb-1">Target Handover Date</label>
+              <label className="text-xs font-semibold text-slate-700 block mb-1">Expected Completion</label>
               <input
                 type="date"
-                value={targetDate}
-                onChange={(e) => setTargetDate(e.target.value)}
+                value={expectedCompletionDate}
+                onChange={(e) => setExpectedCompletionDate(e.target.value)}
                 className="w-full text-sm border border-slate-300 rounded-lg px-3 py-2 focus:outline-teal-600 text-slate-700"
               />
             </div>

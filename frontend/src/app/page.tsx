@@ -5,6 +5,7 @@ import { Sidebar, NavTab } from "@/components/Sidebar";
 import { TopNav } from "@/components/TopNav";
 import { UploadModal } from "@/components/UploadModal";
 import { NewProjectModal } from "@/components/NewProjectModal";
+import { AuthView } from "@/components/AuthView";
 import { useAuth } from "@/lib/auth-context";
 
 // Views
@@ -23,7 +24,26 @@ export default function Home() {
   const [activeTab, setActiveTab] = useState<NavTab>("dashboard");
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [showNewProjectModal, setShowNewProjectModal] = useState(false);
-  const { currentProject, setCurrentProject, refreshProjects } = useAuth();
+  const { user, isLoading, currentProject, setCurrentProject, refreshProjects } = useAuth();
+
+  // Authentication Loading State
+  if (isLoading) {
+    return (
+      <div className="flex h-screen w-screen items-center justify-center bg-slate-900 text-white">
+        <div className="flex flex-col items-center gap-3">
+          <div className="w-8 h-8 border-3 border-teal-500/30 border-t-teal-400 rounded-full animate-spin"></div>
+          <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
+            Loading Knowledge Continuity Platform...
+          </span>
+        </div>
+      </div>
+    );
+  }
+
+  // Protected Routes: Require authenticated user
+  if (!user) {
+    return <AuthView />;
+  }
 
   return (
     <div className="flex h-screen w-screen overflow-hidden bg-slate-50">
@@ -100,6 +120,7 @@ export default function Home() {
           onSuccess={async (newProj) => {
             await refreshProjects();
             setCurrentProject(newProj);
+            setShowNewProjectModal(false);
           }}
         />
       )}

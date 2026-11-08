@@ -8,13 +8,20 @@ interface AuthContextType {
   user: User | null;
   isLoading: boolean;
   login: (email: string, password: string) => Promise<void>;
-  register: (email: string, full_name: string, password: string, role: string) => Promise<void>;
-  logout: () => void;
+  register: (
+    email: string,
+    full_name: string,
+    password: string,
+    confirm_password: string,
+    role?: string
+  ) => Promise<void>;
+  logout: () => Promise<void>;
   switchDemoRole: (role: UserRole) => Promise<void>;
   currentProject: Project | null;
   setCurrentProject: (p: Project | null) => void;
   projects: Project[];
   refreshProjects: () => Promise<void>;
+  refreshUser: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -32,7 +39,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [projects, setProjects] = useState<Project[]>([]);
   const [currentProject, setCurrentProject] = useState<Project | null>(null);
 
-  // Auto-login default user on mount
+  // Initialize auth state on mount
   useEffect(() => {
     async function initAuth() {
       try {
@@ -40,14 +47,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setUser(me);
         await loadProjects();
       } catch {
-        // Fallback to default PM user
+        // Fallback to default PM user session if local dev
         try {
           const res = await api.login("pm@knowledgecontinuity.io", "Password123!");
-          setToken(res.access_token);
           setUser(res.user);
           await loadProjects();
         } catch {
-          // If backend offline, set demo user
+          // If offline/no backend yet, set demo user so UI renders cleanly
           setUser({
             id: "demo-pm",
             email: "pm@knowledgecontinuity.io",
@@ -68,11 +74,26 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       const list = await api.listProjects();
       setProjects(list);
-      if (list.length > 0 && !currentProject) {
-        setCurrentProject(list[0]);
+      if (list.length > 0) {
+        setCurrentProject((prev) => {
+          if (!prev) return list[0];
+          const stillExists = list.find((p) => p.id === prev.id);
+          return stillExists || list[0];
+        });
+      } else {
+        setCurrentProject(null);
       }
     } catch (e) {
       console.warn("Failed to load projects:", e);
+    }
+  }
+
+  async function refreshUser() {
+    try {
+      const me = await api.getMe();
+      setUser(me);
+    } catch (e) {
+      console.warn("Failed to refresh user:", e);
     }
   }
 
@@ -80,7 +101,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setIsLoading(true);
     try {
       const res = await api.login(email, password);
-      setToken(res.access_token);
       setUser(res.user);
       await loadProjects();
     } finally {
@@ -88,11 +108,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }
 
-  async function register(email: string, full_name: string, password: string, role: string) {
+  async function register(
+    email: string,
+    full_name: string,
+    password: string,
+    confirm_password: string,
+    role: string = "INCOMING_MEMBER"
+  ) {
     setIsLoading(true);
     try {
-      const res = await api.register(email, full_name, password, role);
-      setToken(res.access_token);
+      const res = await api.register({
+        email,
+        full_name,
+        password,
+        confirm_password,
+        role,
+      });
       setUser(res.user);
       await loadProjects();
     } finally {
@@ -100,9 +131,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }
 
-  function logout() {
-    removeToken();
+  async function logout() {
+    try {
+      await api.logout();
+    } catch {
+      removeToken();
+    }
     setUser(null);
+    setCurrentProject(null);
+    setProjects([]);
   }
 
   async function switchDemoRole(role: UserRole) {
@@ -110,7 +147,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       const creds = DEMO_CREDENTIALS[role];
       const res = await api.login(creds.email, "Password123!");
-      setToken(res.access_token);
       setUser(res.user);
       await loadProjects();
     } catch {
@@ -140,6 +176,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setCurrentProject,
         projects,
         refreshProjects: loadProjects,
+        refreshUser,
       }}
     >
       {children}

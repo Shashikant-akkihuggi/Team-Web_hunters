@@ -8,10 +8,11 @@ import {
   ReviewLog,
   HandoverDossier,
   DashboardStats,
+  DashboardSummary,
   AuditLogItem,
 } from "./types";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000/api";
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000/api/v1";
 
 function getToken(): string | null {
   if (typeof window === "undefined") return null;
@@ -69,21 +70,71 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
 export const api = {
   // Auth
   async login(email: string, password: string): Promise<{ access_token: string; user: User }> {
-    return request<{ access_token: string; user: User }>("/auth/login", {
+    const res = await request<{ access_token: string; user: User }>("/auth/login", {
       method: "POST",
       body: JSON.stringify({ email, password }),
     });
+    if (res.access_token) {
+      setToken(res.access_token);
+    }
+    return res;
   },
 
-  async register(email: string, full_name: string, password: string, role: string): Promise<{ access_token: string; user: User }> {
-    return request<{ access_token: string; user: User }>("/auth/register", {
+  async register(data: {
+    email: string;
+    full_name: string;
+    password: string;
+    confirm_password: string;
+    role?: string;
+  }): Promise<{ access_token: string; user: User }> {
+    const res = await request<{ access_token: string; user: User }>("/auth/register", {
       method: "POST",
-      body: JSON.stringify({ email, full_name, password, role }),
+      body: JSON.stringify(data),
     });
+    if (res.access_token) {
+      setToken(res.access_token);
+    }
+    return res;
+  },
+
+  async logout(): Promise<{ message: string }> {
+    try {
+      const res = await request<{ message: string }>("/auth/logout", {
+        method: "POST",
+      });
+      removeToken();
+      return res;
+    } catch {
+      removeToken();
+      return { message: "Logged out" };
+    }
   },
 
   async getMe(): Promise<User> {
     return request<User>("/auth/me");
+  },
+
+  // User Management
+  async updateProfile(data: { full_name: string }): Promise<User> {
+    return request<User>("/users/me", {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    });
+  },
+
+  async changePassword(data: {
+    current_password: string;
+    new_password: string;
+    confirm_password: string;
+  }): Promise<{ message: string }> {
+    return request<{ message: string }>("/users/change-password", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  },
+
+  async searchUsers(query: string): Promise<User[]> {
+    return request<User[]>(`/users/search?q=${encodeURIComponent(query)}`);
   },
 
   // Projects
@@ -91,7 +142,17 @@ export const api = {
     return request<Project[]>("/projects");
   },
 
-  async createProject(data: { name: string; description?: string; domain?: string; target_handover_date?: string; handover_role?: string }): Promise<Project> {
+  async createProject(data: {
+    name: string;
+    description?: string;
+    category?: string;
+    domain?: string;
+    status?: string;
+    start_date?: string;
+    expected_completion_date?: string;
+    target_handover_date?: string;
+    handover_role?: string;
+  }): Promise<Project> {
     return request<Project>("/projects", {
       method: "POST",
       body: JSON.stringify(data),
@@ -104,11 +165,24 @@ export const api = {
 
   async updateProject(projectId: string, data: Partial<Project>): Promise<Project> {
     return request<Project>(`/projects/${projectId}`, {
-      method: "PUT",
+      method: "PATCH",
       body: JSON.stringify(data),
     });
   },
 
+  async archiveProject(projectId: string): Promise<Project> {
+    return request<Project>(`/projects/${projectId}/archive`, {
+      method: "POST",
+    });
+  },
+
+  async deleteProject(projectId: string): Promise<{ message: string }> {
+    return request<{ message: string }>(`/projects/${projectId}`, {
+      method: "DELETE",
+    });
+  },
+
+  // Team Management
   async listMembers(projectId: string): Promise<ProjectMember[]> {
     return request<ProjectMember[]>(`/projects/${projectId}/members`);
   },
@@ -120,10 +194,26 @@ export const api = {
     });
   },
 
+  async updateMemberRole(projectId: string, userId: string, role: string): Promise<ProjectMember> {
+    return request<ProjectMember>(`/projects/${projectId}/members/${userId}`, {
+      method: "PATCH",
+      body: JSON.stringify({ role }),
+    });
+  },
+
   async removeMember(projectId: string, userId: string): Promise<void> {
     await request(`/projects/${projectId}/members/${userId}`, {
       method: "DELETE",
     });
+  },
+
+  // Dashboard
+  async getDashboardSummary(): Promise<DashboardSummary> {
+    return request<DashboardSummary>("/dashboard/summary");
+  },
+
+  async getRecentActivity(): Promise<AuditLogItem[]> {
+    return request<AuditLogItem[]>("/dashboard/recent-activity");
   },
 
   // Documents
@@ -250,7 +340,7 @@ export const api = {
     return `${API_BASE}/handovers/${projectId}/${handoverId}/export-pdf?token=${token || ""}`;
   },
 
-  // Dashboard & Analytics
+  // Legacy Dashboard & Analytics stats
   async getDashboardStats(): Promise<DashboardStats> {
     return request<DashboardStats>("/analytics/dashboard");
   },

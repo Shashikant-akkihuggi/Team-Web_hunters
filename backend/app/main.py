@@ -12,11 +12,12 @@ from backend.app.error_handlers import (
     generic_exception_handler
 )
 
-# 10 Logical Modules according to Architecture Guidelines
+# Domain Routers
 from backend.app.routers import (
     auth,
     users,
     projects,
+    dashboard,
     documents,
     extraction,
     knowledge,
@@ -37,7 +38,7 @@ Base.metadata.create_all(bind=engine)
 app = FastAPI(
     title=settings.PROJECT_NAME,
     version=settings.VERSION,
-    description="Evidence-Linked Project Knowledge Handover Platform - Team Web_hunter (Phase 1 Foundation)",
+    description="Evidence-Linked Project Knowledge Handover Platform - Team Web_hunter (Phase 2 Auth & Project Management)",
     docs_url="/docs",
     redoc_url="/redoc"
 )
@@ -56,26 +57,31 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Register the 10 logical domain routers
-app.include_router(auth.router, prefix=settings.API_V1_STR)
-app.include_router(users.router, prefix=settings.API_V1_STR)
-app.include_router(projects.router, prefix=settings.API_V1_STR)
-app.include_router(documents.router, prefix=settings.API_V1_STR)
-app.include_router(extraction.router, prefix=settings.API_V1_STR)
-app.include_router(knowledge.router, prefix=settings.API_V1_STR)
-app.include_router(evidence.router, prefix=settings.API_V1_STR)
-app.include_router(handovers.router, prefix=settings.API_V1_STR)
-app.include_router(permissions.router, prefix=settings.API_V1_STR)
-app.include_router(reviews.router, prefix=settings.API_V1_STR)
-app.include_router(analytics.router, prefix=settings.API_V1_STR)
-app.include_router(audit.router, prefix=settings.API_V1_STR)
+def register_api_routers(prefix: str):
+    app.include_router(auth.router, prefix=prefix)
+    app.include_router(users.router, prefix=prefix)
+    app.include_router(projects.router, prefix=prefix)
+    app.include_router(dashboard.router, prefix=prefix)
+    app.include_router(documents.router, prefix=prefix)
+    app.include_router(extraction.router, prefix=prefix)
+    app.include_router(knowledge.router, prefix=prefix)
+    app.include_router(evidence.router, prefix=prefix)
+    app.include_router(handovers.router, prefix=prefix)
+    app.include_router(permissions.router, prefix=prefix)
+    app.include_router(reviews.router, prefix=prefix)
+    app.include_router(analytics.router, prefix=prefix)
+    app.include_router(audit.router, prefix=prefix)
+
+# Mount both /api/v1 and /api for full specification and legacy compatibility
+register_api_routers("/api/v1")
+register_api_routers("/api")
 
 @app.get("/")
 def root():
     return {
         "service": "Knowledge Continuity API",
         "team": "Web_hunter",
-        "phase": "Phase 1 - Repository Audit & Project Foundation",
+        "phase": "Phase 2 - Authentication & Project Management",
         "status": "HEALTHY",
         "version": settings.VERSION,
         "docs": "/docs"

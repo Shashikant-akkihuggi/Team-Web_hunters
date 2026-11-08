@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 from sqlalchemy import (
-    Column, String, Text, Integer, Float, Boolean, DateTime, ForeignKey, Enum as SQLEnum, JSON
+    Column, String, Text, Integer, Float, Boolean, DateTime, ForeignKey, Enum as SQLEnum, JSON, UniqueConstraint
 )
 from sqlalchemy.orm import relationship
 from backend.app.database import Base
@@ -41,6 +41,13 @@ class VerificationStatus:
     CONFLICTING = "CONFLICTING"
     AMBIGUOUS = "AMBIGUOUS"
 
+class ProjectStatus:
+    PLANNING = "PLANNING"
+    ACTIVE = "ACTIVE"
+    ON_HOLD = "ON_HOLD"
+    COMPLETED = "COMPLETED"
+    ARCHIVED = "ARCHIVED"
+
 class HandoverStatus:
     DRAFT = "DRAFT"
     REVIEWED = "REVIEWED"
@@ -70,8 +77,11 @@ class Project(Base):
     id = Column(String(36), primary_key=True, default=generate_uuid)
     name = Column(String(255), nullable=False, index=True)
     description = Column(Text, nullable=True)
+    category = Column(String(100), default="Engineering")
     domain = Column(String(100), default="Engineering")
-    status = Column(String(50), default="ACTIVE")  # ACTIVE, ARCHIVED, HANDOVER_IN_PROGRESS, COMPLETED
+    status = Column(String(50), default=ProjectStatus.ACTIVE)  # PLANNING, ACTIVE, ON_HOLD, COMPLETED, ARCHIVED
+    start_date = Column(DateTime, default=datetime.utcnow)
+    expected_completion_date = Column(DateTime, nullable=True)
     target_handover_date = Column(DateTime, nullable=True)
     handover_role = Column(String(100), default="Lead Full-Stack Engineer")
     created_by = Column(String(36), ForeignKey("users.id"), nullable=False)
@@ -88,6 +98,7 @@ class Project(Base):
 
 class ProjectMember(Base):
     __tablename__ = "project_members"
+    __table_args__ = (UniqueConstraint('project_id', 'user_id', name='uq_project_user'),)
 
     id = Column(String(36), primary_key=True, default=generate_uuid)
     project_id = Column(String(36), ForeignKey("projects.id"), nullable=False, index=True)

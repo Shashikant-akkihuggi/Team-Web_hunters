@@ -13,9 +13,12 @@ export interface Project {
   id: string;
   name: string;
   description: string | null;
-  domain: string;
+  category?: string;
+  domain?: string;
   status: string;
-  target_handover_date: string | null;
+  start_date?: string | null;
+  expected_completion_date?: string | null;
+  target_handover_date?: string | null;
   handover_role: string;
   created_by: string;
   created_at: string;
@@ -24,6 +27,7 @@ export interface Project {
   documents_count: number;
   findings_count: number;
   readiness_score: number;
+  current_user_role?: UserRole;
 }
 
 export interface ProjectMember {
@@ -168,6 +172,36 @@ export interface HandoverDossier {
   approved_at: string | null;
   created_at: string;
   updated_at: string;
+}
+
+export interface DashboardProjectItem {
+  id: string;
+  name: string;
+  description: string | null;
+  category?: string;
+  status: string;
+  start_date?: string | null;
+  expected_completion_date?: string | null;
+  created_at: string;
+  members_count: number;
+  documents_count: number;
+  findings_count: number;
+  readiness_score: number;
+  current_user_role?: UserRole;
+}
+
+export interface DashboardSummary {
+  total_projects: number;
+  active_projects: number;
+  completed_projects: number;
+  on_hold_projects: number;
+  planning_projects: number;
+  archived_projects: number;
+  total_documents: number;
+  total_findings: number;
+  pending_reviews: number;
+  approved_findings: number;
+  recent_projects: DashboardProjectItem[];
 }
 
 export interface DashboardStats {

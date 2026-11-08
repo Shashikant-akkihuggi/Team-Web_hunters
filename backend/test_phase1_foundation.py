@@ -86,10 +86,11 @@ def test_ten_logical_domain_routers():
         print(f"  -> 2. Users Module: OK ({len(users)} users listed)")
 
         # 3. Projects Module
-        projects = list_projects(db=db, current_user=admin_user)
-        assert len(projects) > 0
-        project_id = projects[0].id
-        print(f"  -> 3. Projects Module: OK (Active project: {projects[0].name})")
+        project_list = list_projects(db=db, current_user=admin_user)
+        assert len(project_list) > 0
+        project = next((p for p in project_list if p.documents_count > 0), project_list[0])
+        project_id = project.id
+        print(f"  -> 3. Projects Module: OK (Active project: {project.name})")
 
         # 4. Documents Module
         docs = list_documents(project_id=project_id, db=db, current_user=admin_user)

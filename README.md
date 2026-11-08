@@ -182,7 +182,46 @@ docker-compose up --build
 
 ---
 
-## 5. Demo Accounts
+## 5. Phase 2 Endpoints & Features
+
+### Authentication & User Management
+- `POST /api/v1/auth/register`: Full name, email, password, confirm password, duplicate check, bcrypt hashing.
+- `POST /api/v1/auth/login`: Email/password verification, JWT issuance.
+- `GET /api/v1/auth/me`: Authenticated user identity, role, and status (never exposes password hashes).
+- `POST /api/v1/auth/logout`: Audit logging and client token invalidation.
+- `GET /api/v1/users/me`: View authenticated user account information.
+- `PATCH /api/v1/users/me`: Update full name.
+- `POST /api/v1/users/change-password`: Verify current password, validate length, hash and save new password.
+- `GET /api/v1/users/search?q=...`: Real-time autocomplete search for registered members.
+
+### Project & Team Management
+- `POST /api/v1/projects`: Create project workspace (Name, Description, Category, Status [`PLANNING`, `ACTIVE`, `ON_HOLD`, `COMPLETED`, `ARCHIVED`], Start Date, Expected Completion Date). Creator is automatically assigned as project **ADMIN** with full ownership.
+- `GET /api/v1/projects`: List projects accessible to current user (System ADMIN sees all; standard users see only their projects).
+- `GET /api/v1/projects/{id}`: Detailed project information with computed handover readiness score.
+- `PATCH /api/v1/projects/{id}`: Update project details (permitted for `ADMIN` and `PROJECT_MANAGER`).
+- `POST /api/v1/projects/{id}/archive`: Archive project workspace.
+- `DELETE /api/v1/projects/{id}`: Delete workspace and cascade-clean all associated documents and findings (permitted only for `ADMIN`).
+- `GET /api/v1/projects/{id}/members`: List team members with roles and join dates.
+- `POST /api/v1/projects/{id}/members`: Add registered user by email. Rejects non-existent emails with 404 and duplicate members with 400.
+- `PATCH /api/v1/projects/{id}/members/{user_id}`: Update member role (permitted only for `ADMIN`, with safeguard protecting the sole ADMIN from demotion).
+- `DELETE /api/v1/projects/{id}/members/{user_id}`: Remove member from project (permitted only for `ADMIN`, with safeguard protecting the sole ADMIN from removal).
+
+### Real Database-Driven Dashboard
+- `GET /api/v1/dashboard/summary`: Real counts for total accessible projects, active, completed, on-hold, planning, archived, ingested sources, extracted facts, and pending reviews. Includes list of recent projects with user's active role.
+- `GET /api/v1/dashboard/recent-activity`: Real activity stream queried from the immutable `AuditLog` table.
+
+### Automated Testing
+```powershell
+# Run Phase 1 Foundation Test Suite
+python backend/test_phase1_foundation.py
+
+# Run Phase 2 Auth & Project Management Test Suite
+python backend/test_phase2_auth_projects.py
+```
+
+---
+
+## 6. Demo Accounts
 
 All demo accounts use password: `Password123!`
 

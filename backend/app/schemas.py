@@ -1,8 +1,8 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator, model_validator
 from typing import Optional, List, Dict, Any
 from datetime import datetime
 
-# --- Auth Schemas ---
+# --- Auth & User Schemas ---
 class UserBase(BaseModel):
     email: str
     full_name: str
@@ -11,9 +11,36 @@ class UserBase(BaseModel):
 class UserCreate(UserBase):
     password: str = Field(..., min_length=6)
 
+class UserRegister(BaseModel):
+    full_name: str = Field(..., min_length=2, max_length=255)
+    email: str = Field(..., min_length=5, max_length=255)
+    password: str = Field(..., min_length=6)
+    confirm_password: str = Field(..., min_length=6)
+    role: Optional[str] = "INCOMING_MEMBER"
+
+    @model_validator(mode='after')
+    def verify_passwords_match(self):
+        if self.password != self.confirm_password:
+            raise ValueError("Passwords do not match")
+        return self
+
 class UserLogin(BaseModel):
     email: str
     password: str
+
+class UserUpdate(BaseModel):
+    full_name: Optional[str] = Field(None, min_length=2, max_length=255)
+
+class UserChangePassword(BaseModel):
+    current_password: str = Field(..., min_length=1)
+    new_password: str = Field(..., min_length=6)
+    confirm_password: str = Field(..., min_length=6)
+
+    @model_validator(mode='after')
+    def verify_passwords_match(self):
+        if self.new_password != self.confirm_password:
+            raise ValueError("New password and confirm password do not match")
+        return self
 
 class UserResponse(UserBase):
     id: str
@@ -33,13 +60,16 @@ class TokenData(BaseModel):
     email: Optional[str] = None
     role: Optional[str] = None
 
-# --- Project Schemas ---
+# --- Project & Team Schemas ---
 class ProjectMemberBase(BaseModel):
     user_id: str
     role: str
 
 class ProjectMemberAdd(BaseModel):
     email: str
+    role: str = "INCOMING_MEMBER"
+
+class ProjectMemberUpdate(BaseModel):
     role: str
 
 class ProjectMemberResponse(BaseModel):
@@ -56,7 +86,11 @@ class ProjectMemberResponse(BaseModel):
 class ProjectBase(BaseModel):
     name: str = Field(..., min_length=2, max_length=255)
     description: Optional[str] = None
+    category: Optional[str] = "Engineering"
     domain: Optional[str] = "Engineering"
+    status: Optional[str] = "ACTIVE"
+    start_date: Optional[datetime] = None
+    expected_completion_date: Optional[datetime] = None
     target_handover_date: Optional[datetime] = None
     handover_role: Optional[str] = "Lead Full-Stack Engineer"
 
@@ -66,14 +100,18 @@ class ProjectCreate(ProjectBase):
 class ProjectUpdate(BaseModel):
     name: Optional[str] = None
     description: Optional[str] = None
+    category: Optional[str] = None
     domain: Optional[str] = None
     status: Optional[str] = None
+    start_date: Optional[datetime] = None
+    expected_completion_date: Optional[datetime] = None
     target_handover_date: Optional[datetime] = None
     handover_role: Optional[str] = None
 
 class ProjectResponse(ProjectBase):
     id: str
     status: str
+    category: Optional[str] = "Engineering"
     created_by: str
     created_at: datetime
     updated_at: datetime
@@ -81,6 +119,7 @@ class ProjectResponse(ProjectBase):
     documents_count: Optional[int] = 0
     findings_count: Optional[int] = 0
     readiness_score: Optional[int] = 0
+    current_user_role: Optional[str] = None
 
     class Config:
         from_attributes = True
@@ -239,6 +278,37 @@ class HandoverResponse(BaseModel):
         from_attributes = True
 
 # --- Analytics & Dashboard Schemas ---
+class DashboardProjectItem(BaseModel):
+    id: str
+    name: str
+    description: Optional[str] = None
+    category: Optional[str] = "Engineering"
+    status: str
+    start_date: Optional[datetime] = None
+    expected_completion_date: Optional[datetime] = None
+    created_at: datetime
+    members_count: int = 0
+    documents_count: int = 0
+    findings_count: int = 0
+    readiness_score: int = 0
+    current_user_role: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+class DashboardSummary(BaseModel):
+    total_projects: int
+    active_projects: int
+    completed_projects: int
+    on_hold_projects: int
+    planning_projects: int
+    archived_projects: int
+    total_documents: int
+    total_findings: int
+    pending_reviews: int
+    approved_findings: int
+    recent_projects: List[DashboardProjectItem] = []
+
 class DashboardStats(BaseModel):
     total_projects: int
     total_documents: int
