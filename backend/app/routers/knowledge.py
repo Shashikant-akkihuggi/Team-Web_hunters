@@ -29,13 +29,13 @@ def list_findings(
     if membership and membership.role == UserRole.INCOMING_MEMBER:
         query = query.filter(ExtractedFinding.status == "APPROVED")
 
-    if entity_type:
+    if isinstance(entity_type, str) and entity_type:
         query = query.filter(ExtractedFinding.entity_type == entity_type.upper())
-    if verification_status:
+    if isinstance(verification_status, str) and verification_status:
         query = query.filter(ExtractedFinding.verification_status == verification_status.upper())
-    if status:
+    if isinstance(status, str) and status:
         query = query.filter(ExtractedFinding.status == status.upper())
-    if search:
+    if isinstance(search, str) and search:
         search_fmt = f"%{search}%"
         query = query.filter(
             or_(

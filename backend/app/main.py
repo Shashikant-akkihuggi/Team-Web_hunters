@@ -1,8 +1,35 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.exceptions import RequestValidationError
+from starlette.exceptions import HTTPException as StarletteHTTPException
+
 from backend.app.config import settings
 from backend.app.database import Base, engine
-from backend.app.routers import auth, projects, documents, knowledge, review, handovers, analytics, audit
+from backend.app.logging_config import setup_logging, logger
+from backend.app.error_handlers import (
+    http_exception_handler,
+    validation_exception_handler,
+    generic_exception_handler
+)
+
+# 10 Logical Modules according to Architecture Guidelines
+from backend.app.routers import (
+    auth,
+    users,
+    projects,
+    documents,
+    extraction,
+    knowledge,
+    evidence,
+    handovers,
+    permissions,
+    review as reviews,
+    analytics,
+    audit
+)
+
+# Initialize structured logging
+setup_logging()
 
 # Initialize database tables
 Base.metadata.create_all(bind=engine)
@@ -10,12 +37,17 @@ Base.metadata.create_all(bind=engine)
 app = FastAPI(
     title=settings.PROJECT_NAME,
     version=settings.VERSION,
-    description="Evidence-Linked Project Knowledge Handover Platform - Team Web_hunter",
+    description="Evidence-Linked Project Knowledge Handover Platform - Team Web_hunter (Phase 1 Foundation)",
     docs_url="/docs",
     redoc_url="/redoc"
 )
 
-# CORS setup
+# Register centralized error handlers
+app.add_exception_handler(StarletteHTTPException, http_exception_handler)
+app.add_exception_handler(RequestValidationError, validation_exception_handler)
+app.add_exception_handler(Exception, generic_exception_handler)
+
+# CORS configuration
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.CORS_ORIGINS or ["*"],
@@ -24,13 +56,17 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Register routers
+# Register the 10 logical domain routers
 app.include_router(auth.router, prefix=settings.API_V1_STR)
+app.include_router(users.router, prefix=settings.API_V1_STR)
 app.include_router(projects.router, prefix=settings.API_V1_STR)
 app.include_router(documents.router, prefix=settings.API_V1_STR)
+app.include_router(extraction.router, prefix=settings.API_V1_STR)
 app.include_router(knowledge.router, prefix=settings.API_V1_STR)
-app.include_router(review.router, prefix=settings.API_V1_STR)
+app.include_router(evidence.router, prefix=settings.API_V1_STR)
 app.include_router(handovers.router, prefix=settings.API_V1_STR)
+app.include_router(permissions.router, prefix=settings.API_V1_STR)
+app.include_router(reviews.router, prefix=settings.API_V1_STR)
 app.include_router(analytics.router, prefix=settings.API_V1_STR)
 app.include_router(audit.router, prefix=settings.API_V1_STR)
 
@@ -38,6 +74,8 @@ app.include_router(audit.router, prefix=settings.API_V1_STR)
 def root():
     return {
         "service": "Knowledge Continuity API",
+        "team": "Web_hunter",
+        "phase": "Phase 1 - Repository Audit & Project Foundation",
         "status": "HEALTHY",
         "version": settings.VERSION,
         "docs": "/docs"
@@ -45,4 +83,9 @@ def root():
 
 @app.get("/health")
 def health_check():
-    return {"status": "ok", "environment": "production-ready"}
+    return {
+        "status": "ok",
+        "database": "connected",
+        "environment": "production-ready",
+        "service": settings.PROJECT_NAME
+    }
