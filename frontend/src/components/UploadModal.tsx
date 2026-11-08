@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useRef } from "react";
-import { UploadCloud, FileText, CheckCircle2, AlertCircle, X, Loader2 } from "lucide-react";
+import { UploadCloud, FileText, CheckCircle2, AlertCircle, X, Loader2, Sparkles } from "lucide-react";
 import { api } from "@/lib/api";
 
 interface UploadModalProps {
@@ -13,6 +13,7 @@ interface UploadModalProps {
 export function UploadModal({ projectId, onClose, onSuccess }: UploadModalProps) {
   const [files, setFiles] = useState<File[]>([]);
   const [isUploading, setIsUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [isDragOver, setIsDragOver] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -34,7 +35,7 @@ export function UploadModal({ projectId, onClose, onSuccess }: UploadModalProps)
           setError(`File ${file.name} exceeds the 25MB limit.`);
         }
       } else {
-        setError(`File ${file.name} is not a supported format (PDF, DOCX, TXT only).`);
+        setError(`File '${file.name}' has an unsupported extension (Supported: PDF, DOCX, TXT).`);
       }
     }
     setFiles((prev) => [...prev, ...valid]);
@@ -47,12 +48,21 @@ export function UploadModal({ projectId, onClose, onSuccess }: UploadModalProps)
   async function handleUpload() {
     if (files.length === 0) return;
     setIsUploading(true);
+    setUploadProgress(20);
     setError(null);
+
+    const progressInterval = setInterval(() => {
+      setUploadProgress((prev) => (prev < 90 ? prev + 15 : prev));
+    }, 400);
+
     try {
       await api.uploadDocuments(projectId, files);
+      clearInterval(progressInterval);
+      setUploadProgress(100);
       onSuccess();
       onClose();
     } catch (err: any) {
+      clearInterval(progressInterval);
       setError(err.message || "Failed to upload and index documents.");
     } finally {
       setIsUploading(false);
@@ -130,7 +140,7 @@ export function UploadModal({ projectId, onClose, onSuccess }: UploadModalProps)
                   <div className="flex items-center gap-2 min-w-0">
                     <FileText className="w-4 h-4 text-teal-600 shrink-0" />
                     <span className="font-medium text-slate-800 truncate">{file.name}</span>
-                    <span className="text-slate-400">({(file.size / 1024).toFixed(1)} KB)</span>
+                    <span className="text-slate-400 font-mono">({(file.size / 1024).toFixed(1)} KB)</span>
                   </div>
                   {!isUploading && (
                     <button
@@ -145,11 +155,30 @@ export function UploadModal({ projectId, onClose, onSuccess }: UploadModalProps)
             </div>
           )}
 
+          {/* Progress Bar during Upload */}
+          {isUploading && (
+            <div className="space-y-1.5 p-3 bg-slate-50 border border-slate-200 rounded-lg">
+              <div className="flex justify-between items-center text-xs">
+                <span className="font-semibold text-slate-700 flex items-center gap-1.5">
+                  <Loader2 className="w-3.5 h-3.5 animate-spin text-teal-600" />
+                  Extracting text, chunking & verifying facts...
+                </span>
+                <span className="font-bold text-teal-700">{uploadProgress}%</span>
+              </div>
+              <div className="w-full bg-slate-200 h-2 rounded-full overflow-hidden">
+                <div
+                  className="bg-teal-600 h-full rounded-full transition-all duration-300"
+                  style={{ width: `${uploadProgress}%` }}
+                />
+              </div>
+            </div>
+          )}
+
           {/* AI Notice */}
           <div className="p-3 bg-teal-50 border border-teal-200 rounded-lg text-xs text-teal-900 flex items-start gap-2">
             <CheckCircle2 className="w-4 h-4 text-teal-600 shrink-0 mt-0.5" />
             <span>
-              Uploaded files will be parsed into page-level chunks. The AI engine will extract decisions, tasks, blockers, risks, and verify every finding against exact page quotations.
+              Uploaded files will be parsed into page-level chunks with SHA-256 deduplication. Every finding is anchored to exact source pages.
             </span>
           </div>
         </div>
@@ -171,7 +200,7 @@ export function UploadModal({ projectId, onClose, onSuccess }: UploadModalProps)
             {isUploading ? (
               <>
                 <Loader2 className="w-4 h-4 animate-spin" />
-                Ingesting & Extracting...
+                Processing Pipeline...
               </>
             ) : (
               `Ingest ${files.length} Document${files.length > 1 ? "s" : ""}`

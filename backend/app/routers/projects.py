@@ -1,6 +1,6 @@
 from typing import List, Optional
 from datetime import datetime
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, status
 from sqlalchemy.orm import Session
 
 from backend.app.database import get_db
@@ -10,7 +10,8 @@ from backend.app.models import (
 )
 from backend.app.schemas import (
     ProjectCreate, ProjectUpdate, ProjectResponse,
-    ProjectMemberAdd, ProjectMemberUpdate, ProjectMemberResponse
+    ProjectMemberAdd, ProjectMemberUpdate, ProjectMemberResponse,
+    DocumentResponse
 )
 from backend.app.auth import get_current_user, check_project_access
 
@@ -588,3 +589,29 @@ def remove_project_member(
     db.commit()
 
     return {"message": "Member removed successfully from project."}
+
+# =========================================================================
+# Project Documents Direct Endpoints (Phase 3 Specification)
+# =========================================================================
+
+@router.post("/{project_id}/documents", response_model=List[DocumentResponse])
+async def upload_project_documents(
+    project_id: str,
+    files: List[UploadFile] = File(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Direct alias for document upload: POST /api/v1/projects/{project_id}/documents."""
+    from backend.app.routers.documents import upload_documents
+    return await upload_documents(project_id=project_id, files=files, db=db, current_user=current_user)
+
+@router.get("/{project_id}/documents", response_model=List[DocumentResponse])
+def get_project_documents(
+    project_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Direct alias for document listing: GET /api/v1/projects/{project_id}/documents."""
+    from backend.app.routers.documents import list_project_documents
+    return list_project_documents(project_id=project_id, db=db, current_user=current_user)
+

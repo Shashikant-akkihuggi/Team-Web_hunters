@@ -42,26 +42,61 @@ export interface ProjectMember {
 export interface DocumentChunk {
   id: string;
   document_id: string;
+  project_id?: string;
   page_number: number;
+  page_start?: number;
+  page_end?: number;
   chunk_index: number;
   text_content: string;
   char_start: number;
   char_end: number;
+  character_start?: number;
+  character_end?: number;
+  created_at?: string;
+}
+
+export interface DocumentPage {
+  id: string;
+  document_id: string;
+  page_number: number;
+  extracted_text: string;
+  char_count: number;
+  created_at?: string;
+}
+
+export interface DocumentContent {
+  id: string;
+  filename: string;
+  page_count: number;
+  extracted_character_count: number;
+  full_text: string;
+  pages: DocumentPage[];
 }
 
 export interface DocumentItem {
   id: string;
   project_id: string;
   filename: string;
+  original_filename?: string;
+  storage_key?: string;
   file_size: number;
   file_type: string;
+  mime_type?: string;
+  file_extension?: string;
   file_hash: string;
+  checksum?: string;
   page_count: number;
-  status: "PENDING" | "PROCESSING" | "COMPLETED" | "FAILED";
+  status: "PENDING" | "PROCESSING" | "COMPLETED" | "PROCESSED" | "FAILED" | "UPLOADED";
+  processing_status?: string;
+  extracted_character_count?: number;
+  chunk_count?: number;
+  chunks_count: number;
   error_message: string | null;
+  processing_error?: string | null;
   uploaded_by: string;
   created_at: string;
-  chunks_count: number;
+  updated_at?: string;
+  processed_at?: string | null;
 }
 
 export type EntityType =

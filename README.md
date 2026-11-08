@@ -217,11 +217,45 @@ python backend/test_phase1_foundation.py
 
 # Run Phase 2 Auth & Project Management Test Suite
 python backend/test_phase2_auth_projects.py
+
+# Run Phase 3 Document Ingestion & Processing Test Suite
+python backend/test_phase3_document_pipeline.py
 ```
 
 ---
 
-## 6. Demo Accounts
+## 6. Phase 3 Document Ingestion & Processing Engine
+
+### Architecture
+```mermaid
+flowchart LR
+    Upload[Multi-File Upload] --> Validate[Signature & Size Check]
+    Validate --> Storage[StorageService Abstraction]
+    Storage --> DB_Init[Create Document Record: PROCESSING]
+    DB_Init --> Parser[Format-Specific Parser]
+    Parser --> PDF[PyMuPDF: Pages & Metadata]
+    Parser --> DOCX[python-docx: Paragraphs & Tables]
+    Parser --> TXT[Multi-Encoding UTF-8 Decoder]
+    PDF & DOCX & TXT --> Normalize[Unicode & Paragraph Normalizer]
+    Normalize --> Pages[Store DocumentPage Records]
+    Normalize --> Chunker[Paragraph/Sentence Sliding Window]
+    Chunker --> Chunks[Store DocumentChunk: Offsets & Pages]
+    Chunks --> Finalize[Update Status: PROCESSED]
+```
+
+### Endpoints
+- `POST /api/v1/projects/{project_id}/documents`: Upload multiple documents with signature verification and 25MB limit.
+- `GET /api/v1/projects/{project_id}/documents`: List ingested documents for an authorized workspace.
+- `GET /api/v1/documents/{document_id}`: Fetch single document metadata and processing statistics.
+- `GET /api/v1/documents/{document_id}/status`: Fetch real-time status and error reports.
+- `GET /api/v1/documents/{document_id}/content`: Inspect full normalized text and page-by-page text.
+- `GET /api/v1/documents/{document_id}/chunks`: Retrieve generated text chunks with exact page provenance and character offsets.
+- `POST /api/v1/documents/{document_id}/retry`: Retry failed document parsing from persistent storage.
+- `DELETE /api/v1/documents/{document_id}`: Remove document, storage files, chunks, pages, and findings with cascading integrity.
+
+---
+
+## 7. Demo Accounts
 
 All demo accounts use password: `Password123!`
 

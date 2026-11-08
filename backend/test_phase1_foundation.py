@@ -88,7 +88,7 @@ def test_ten_logical_domain_routers():
         # 3. Projects Module
         project_list = list_projects(db=db, current_user=admin_user)
         assert len(project_list) > 0
-        project = next((p for p in project_list if p.documents_count > 0), project_list[0])
+        project = next((p for p in project_list if "Apollo" in p.name), project_list[0])
         project_id = project.id
         print(f"  -> 3. Projects Module: OK (Active project: {project.name})")
 

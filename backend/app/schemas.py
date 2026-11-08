@@ -125,14 +125,32 @@ class ProjectResponse(ProjectBase):
         from_attributes = True
 
 # --- Document Schemas ---
-class DocumentChunkResponse(BaseModel):
+class DocumentPageResponse(BaseModel):
     id: str
     document_id: str
     page_number: int
+    extracted_text: str
+    char_count: int
+    created_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+class DocumentChunkResponse(BaseModel):
+    id: str
+    document_id: str
+    project_id: Optional[str] = None
+    page_number: int
+    page_start: Optional[int] = 1
+    page_end: Optional[int] = 1
     chunk_index: int
     text_content: str
+    content: Optional[str] = None
     char_start: int
     char_end: int
+    character_start: Optional[int] = 0
+    character_end: Optional[int] = 0
+    created_at: Optional[datetime] = None
 
     class Config:
         from_attributes = True
@@ -141,15 +159,52 @@ class DocumentResponse(BaseModel):
     id: str
     project_id: str
     filename: str
+    original_filename: Optional[str] = None
+    storage_key: Optional[str] = None
     file_size: int
     file_type: str
+    mime_type: Optional[str] = None
+    file_extension: Optional[str] = None
     file_hash: str
+    checksum: Optional[str] = None
     page_count: int
     status: str
+    processing_status: Optional[str] = "PROCESSED"
+    extracted_character_count: Optional[int] = 0
+    chunk_count: Optional[int] = 0
+    chunks_count: Optional[int] = 0
     error_message: Optional[str] = None
+    processing_error: Optional[str] = None
     uploaded_by: str
     created_at: datetime
-    chunks_count: Optional[int] = 0
+    updated_at: Optional[datetime] = None
+    processed_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+class DocumentContentResponse(BaseModel):
+    id: str
+    filename: str
+    page_count: int
+    extracted_character_count: int
+    full_text: str
+    pages: List[DocumentPageResponse] = []
+
+    class Config:
+        from_attributes = True
+
+class DocumentStatusResponse(BaseModel):
+    id: str
+    filename: str
+    status: str
+    processing_status: str
+    page_count: int
+    chunk_count: int
+    extracted_character_count: int
+    error_message: Optional[str] = None
+    processing_error: Optional[str] = None
+    processed_at: Optional[datetime] = None
 
     class Config:
         from_attributes = True

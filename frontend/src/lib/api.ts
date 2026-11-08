@@ -4,6 +4,8 @@ import {
   ProjectMember,
   DocumentItem,
   DocumentChunk,
+  DocumentContent,
+  DocumentPage,
   ExtractedFinding,
   ReviewLog,
   HandoverDossier,
@@ -221,6 +223,10 @@ export const api = {
     return request<DocumentItem[]>(`/documents/${projectId}`);
   },
 
+  async getDocument(documentId: string): Promise<DocumentItem> {
+    return request<DocumentItem>(`/documents/detail/${documentId}`);
+  },
+
   async uploadDocuments(projectId: string, files: File[]): Promise<DocumentItem[]> {
     const formData = new FormData();
     files.forEach((file) => formData.append("files", file));
@@ -230,12 +236,26 @@ export const api = {
     });
   },
 
+  async getDocumentContent(documentId: string): Promise<DocumentContent> {
+    return request<DocumentContent>(`/documents/${documentId}/content`);
+  },
+
+  async getDocumentStatus(documentId: string): Promise<any> {
+    return request<any>(`/documents/${documentId}/status`);
+  },
+
+  async retryDocument(documentId: string): Promise<DocumentItem> {
+    return request<DocumentItem>(`/documents/${documentId}/retry`, {
+      method: "POST",
+    });
+  },
+
   async getDocumentChunks(projectId: string, documentId: string): Promise<DocumentChunk[]> {
     return request<DocumentChunk[]>(`/documents/${projectId}/${documentId}/chunks`);
   },
 
   async deleteDocument(projectId: string, documentId: string): Promise<void> {
-    await request(`/documents/${projectId}/${documentId}`, {
+    await request(`/documents/${documentId}`, {
       method: "DELETE",
     });
   },
